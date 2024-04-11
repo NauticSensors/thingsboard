@@ -16,6 +16,7 @@
 package org.thingsboard.server.msa;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.restassured.RestAssured;
 import io.restassured.common.mapper.TypeRef;
 import io.restassured.config.HeaderConfig;
@@ -23,6 +24,7 @@ import io.restassured.config.RestAssuredConfig;
 import io.restassured.filter.log.RequestLoggingFilter;
 import io.restassured.filter.log.ResponseLoggingFilter;
 import io.restassured.http.ContentType;
+import io.restassured.internal.ValidatableResponseImpl;
 import io.restassured.path.json.JsonPath;
 import io.restassured.response.ValidatableResponse;
 import io.restassured.specification.RequestSpecification;
@@ -32,6 +34,7 @@ import org.thingsboard.server.common.data.Device;
 import org.thingsboard.server.common.data.DeviceProfile;
 import org.thingsboard.server.common.data.EntityView;
 import org.thingsboard.server.common.data.EventInfo;
+import org.thingsboard.server.common.data.TbResource;
 import org.thingsboard.server.common.data.User;
 import org.thingsboard.server.common.data.alarm.Alarm;
 import org.thingsboard.server.common.data.asset.Asset;
@@ -46,6 +49,7 @@ import org.thingsboard.server.common.data.id.DeviceId;
 import org.thingsboard.server.common.data.id.DeviceProfileId;
 import org.thingsboard.server.common.data.id.EntityId;
 import org.thingsboard.server.common.data.id.EntityViewId;
+import org.thingsboard.server.common.data.id.RpcId;
 import org.thingsboard.server.common.data.id.RuleChainId;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.id.UserId;
@@ -54,6 +58,7 @@ import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.common.data.page.TimePageLink;
 import org.thingsboard.server.common.data.relation.EntityRelation;
 import org.thingsboard.server.common.data.relation.RelationTypeGroup;
+import org.thingsboard.server.common.data.rpc.Rpc;
 import org.thingsboard.server.common.data.rule.RuleChain;
 import org.thingsboard.server.common.data.rule.RuleChainMetaData;
 import org.thingsboard.server.common.data.security.DeviceCredentials;
@@ -61,8 +66,10 @@ import org.thingsboard.server.common.data.security.DeviceCredentials;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 import static io.restassured.RestAssured.given;
+import static java.net.HttpURLConnection.HTTP_BAD_REQUEST;
 import static java.net.HttpURLConnection.HTTP_NOT_FOUND;
 import static java.net.HttpURLConnection.HTTP_OK;
 import static org.hamcrest.Matchers.is;
@@ -112,6 +119,16 @@ public class TestRestClient {
                 .extract()
                 .as(Device.class);
     }
+
+    public ObjectNode postRpcLwm2mParams(String deviceIdStr, String body) {
+        return given().spec(requestSpec).body(body)
+                .post("/api/plugins/rpc/twoway/" + deviceIdStr)
+                .then()
+                .statusCode(HTTP_OK)
+                .extract()
+                .as(ObjectNode.class);
+    }
+
 
     public Device getDeviceByName(String deviceName) {
         return given().spec(requestSpec).pathParam("deviceName", deviceName)
@@ -187,7 +204,7 @@ public class TestRestClient {
 
     public ValidatableResponse postAttribute(String accessToken, JsonNode attribute) {
         return given().spec(requestSpec).body(attribute)
-                .post("/api/v1/{accessToken}/attributes/", accessToken)
+                .post("/api/v1/{accessToken}/attributes", accessToken)
                 .then()
                 .statusCode(HTTP_OK);
     }
@@ -304,6 +321,27 @@ public class TestRestClient {
                 .statusCode(HTTP_OK)
                 .extract()
                 .as(JsonNode.class);
+    }
+
+    public Rpc getPersistedRpc(RpcId rpcId) {
+        return given().spec(requestSpec)
+                .get("/api/rpc/persistent/{rpcId}", rpcId.toString())
+                .then()
+                .statusCode(HTTP_OK)
+                .extract()
+                .as(Rpc.class);
+    }
+
+    public PageData<Rpc> getPersistedRpcByDevice(DeviceId deviceId, PageLink pageLink) {
+        Map<String, String> params = new HashMap<>();
+        addPageLinkToParam(params, pageLink);
+        return given().spec(requestSpec).queryParams(params)
+                .get("/api/rpc/persistent/device/{deviceId}", deviceId.toString())
+                .then()
+                .statusCode(HTTP_OK)
+                .extract()
+                .as(new TypeRef<>() {
+                });
     }
 
     public PageData<DeviceProfile> getDeviceProfiles(PageLink pageLink) {
@@ -546,6 +584,43 @@ public class TestRestClient {
                 .statusCode(HTTP_OK)
                 .extract()
                 .as(new TypeRef<>() {});
+    }
+
+    public ValidatableResponse postTbResourceIfNotExists(TbResource lwModel) {
+        return given().spec(requestSpec).body(lwModel)
+                .post("/api/resource")
+                .then()
+                .statusCode(anyOf(is(HTTP_OK), is(HTTP_BAD_REQUEST)));
+    }
+    public void deleteDeviceProfileIfExists(DeviceProfile deviceProfile) {
+        given().spec(requestSpec)
+                .delete("/api/deviceProfile/" + deviceProfile.getId().getId().toString())
+                .then()
+                .statusCode(anyOf(is(HTTP_OK), is(HTTP_NOT_FOUND)));
+    }
+
+    public Device getDeviceByNameIfExists(String deviceName) {
+        ValidatableResponse response = given().spec(requestSpec)
+                .pathParams("deviceName", deviceName)
+                .get("/api/tenant/devices?deviceName={deviceName}")
+                .then()
+                .statusCode(anyOf(is(HTTP_OK), is(HTTP_NOT_FOUND)));
+        if(((ValidatableResponseImpl) response).extract().response().getStatusCode()==HTTP_OK){
+            return   response.extract()
+                    .as(Device.class);
+        } else {
+            return  null;
+        }
+    }
+
+    public DeviceCredentials postDeviceCredentials(DeviceCredentials deviceCredentials) {
+        return given().spec(requestSpec).body(deviceCredentials)
+                .post("/api/device/credentials")
+                .then()
+                .assertThat()
+                .statusCode(HTTP_OK)
+                .extract()
+                .as(DeviceCredentials.class);
     }
 
     private void addTimePageLinkToParam(Map<String, String> params, TimePageLink pageLink) {

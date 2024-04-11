@@ -17,6 +17,7 @@ package org.thingsboard.server.edge;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.protobuf.AbstractMessage;
 import com.google.protobuf.InvalidProtocolBufferException;
 import com.google.protobuf.MessageLite;
@@ -27,7 +28,6 @@ import org.junit.Before;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.test.context.TestPropertySource;
 import org.thingsboard.common.util.JacksonUtil;
-import org.thingsboard.server.cluster.TbClusterService;
 import org.thingsboard.server.common.data.AdminSettings;
 import org.thingsboard.server.common.data.Customer;
 import org.thingsboard.server.common.data.Dashboard;
@@ -82,9 +82,12 @@ import org.thingsboard.server.gen.edge.v1.AdminSettingsUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.AssetProfileUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.AssetUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.CustomerUpdateMsg;
+import org.thingsboard.server.gen.edge.v1.DeviceCredentialsUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.DeviceProfileUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.DeviceUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.EdgeConfiguration;
+import org.thingsboard.server.gen.edge.v1.OAuth2ClientUpdateMsg;
+import org.thingsboard.server.gen.edge.v1.OAuth2DomainUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.QueueUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.RuleChainMetadataRequestMsg;
 import org.thingsboard.server.gen.edge.v1.RuleChainMetadataUpdateMsg;
@@ -94,12 +97,13 @@ import org.thingsboard.server.gen.edge.v1.TenantProfileUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.TenantUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.UpdateMsgType;
 import org.thingsboard.server.gen.edge.v1.UplinkMsg;
+import org.thingsboard.server.gen.edge.v1.UserCredentialsUpdateMsg;
 import org.thingsboard.server.gen.edge.v1.UserUpdateMsg;
-import org.thingsboard.server.queue.util.DataDecodingEncodingService;
 
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.Random;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -121,14 +125,10 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
     protected EdgeImitator edgeImitator;
     protected Edge edge;
 
+    private Random random = new Random();
+
     @Autowired
     protected EdgeEventService edgeEventService;
-
-    @Autowired
-    protected DataDecodingEncodingService dataDecodingEncodingService;
-
-    @Autowired
-    protected TbClusterService clusterService;
 
     @Before
     public void setupEdgeTest() throws Exception {
@@ -144,7 +144,9 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         installation();
 
         edgeImitator = new EdgeImitator("localhost", 7070, edge.getRoutingKey(), edge.getSecret());
-        edgeImitator.expectMessageAmount(21);
+        edgeImitator.ignoreType(OAuth2ClientUpdateMsg.class);
+        edgeImitator.ignoreType(OAuth2DomainUpdateMsg.class);
+        edgeImitator.expectMessageAmount(24);
         edgeImitator.connect();
 
         requestEdgeRuleChainMetadata();
@@ -164,14 +166,10 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
     }
 
     private RuleChainId getEdgeRootRuleChainId() throws Exception {
-        List<RuleChain> edgeRuleChains = doGetTypedWithPageLink("/api/edge/" + edge.getUuidId() + "/ruleChains?",
-                new TypeReference<PageData<RuleChain>>() {}, new PageLink(100)).getData();
-        for (RuleChain edgeRuleChain : edgeRuleChains) {
-            if (edgeRuleChain.isRoot()) {
-                return edgeRuleChain.getId();
-            }
-        }
-        throw new RuntimeException("Root rule chain not found");
+        return doGetTypedWithPageLink("/api/ruleChains?type={type}&", new TypeReference<PageData<RuleChain>>() {},
+                new PageLink(100, 0, "Edge Root Rule Chain"),
+                "EDGE")
+                .getData().get(0).getId();
     }
 
     @After
@@ -182,7 +180,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
             doDelete("/api/edge/" + edge.getId().toString())
                     .andExpect(status().isOk());
             edgeImitator.disconnect();
-        } catch (Exception ignored) {}
+        } catch (Exception ignored) {
+        }
     }
 
     private void installation() throws Exception {
@@ -195,6 +194,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
 
         Asset savedAsset = saveAsset("Edge Asset 1");
 
+        updateRootRuleChainMetadata();
+
         edge = doPost("/api/edge", constructEdge("Test Edge", "test"), Edge.class);
 
         doPost("/api/edge/" + edge.getUuidId()
@@ -203,7 +204,14 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
                 + "/asset/" + savedAsset.getUuidId(), Asset.class);
 
         // wait until assign device and asset events are fully processed by edge notification service
-        TimeUnit.MILLISECONDS.sleep(500);
+        TimeUnit.MILLISECONDS.sleep(1000);
+    }
+
+    protected void updateRootRuleChainMetadata() throws Exception {
+        RuleChainId rootRuleChainId = getEdgeRootRuleChainId();
+        RuleChainMetaData rootRuleChainMetadata = doGet("/api/ruleChain/" + rootRuleChainId.getId().toString() + "/metadata", RuleChainMetaData.class);
+        rootRuleChainMetadata.getNodes().forEach(n -> n.setDebugMode(random.nextBoolean()));
+        doPost("/api/ruleChain/metadata", rootRuleChainMetadata, RuleChainMetaData.class);
     }
 
     protected void extendDeviceProfileData(DeviceProfile deviceProfile) {
@@ -249,7 +257,7 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         UUID ruleChainUUID = validateRuleChains();
 
         // 1 from request message
-        validateMsgsCnt(RuleChainMetadataUpdateMsg.class, 1);
+        validateMsgsCnt(RuleChainMetadataUpdateMsg.class, 2);
         validateRuleChainMetadataUpdates(ruleChainUUID);
 
         // 4 messages ('general', 'mail', 'connectivity', 'jwt')
@@ -274,6 +282,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         validateMsgsCnt(DeviceUpdateMsg.class, 1);
         validateDevices();
 
+        validateMsgsCnt(DeviceCredentialsUpdateMsg.class, 1);
+
         // 1 from asset fetcher
         validateMsgsCnt(AssetUpdateMsg.class, 1);
         validateAssets();
@@ -285,6 +295,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         // 1 message from user fetcher
         validateMsgsCnt(UserUpdateMsg.class, 1);
         validateUsers();
+
+        validateMsgsCnt(UserCredentialsUpdateMsg.class, 1);
 
         // 1 from tenant fetcher
         validateMsgsCnt(TenantUpdateMsg.class, 1);
@@ -379,7 +391,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         Device device = doGet("/api/device/" + deviceUUID, Device.class);
         Assert.assertNotNull(device);
         List<DeviceInfo> edgeDevices = doGetTypedWithPageLink("/api/edge/" + edge.getUuidId() + "/devices?",
-                new TypeReference<PageData<DeviceInfo>>() {}, new PageLink(100)).getData();
+                new TypeReference<PageData<DeviceInfo>>() {
+                }, new PageLink(100)).getData();
         Assert.assertTrue(edgeDevices.stream().map(DeviceInfo::getId).anyMatch(id -> id.equals(device.getId())));
 
         testAutoGeneratedCodeByProtobuf(deviceUpdateMsg);
@@ -398,7 +411,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         Asset asset = doGet("/api/asset/" + assetUUID, Asset.class);
         Assert.assertNotNull(asset);
         List<Asset> edgeAssets = doGetTypedWithPageLink("/api/edge/" + edge.getUuidId() + "/assets?",
-                new TypeReference<PageData<Asset>>() {}, new PageLink(100)).getData();
+                new TypeReference<PageData<Asset>>() {
+                }, new PageLink(100)).getData();
         Assert.assertTrue(edgeAssets.contains(asset));
 
         testAutoGeneratedCodeByProtobuf(assetUpdateMsg);
@@ -418,7 +432,8 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         RuleChain ruleChain = doGet("/api/ruleChain/" + ruleChainUUID, RuleChain.class);
         Assert.assertNotNull(ruleChain);
         List<RuleChain> edgeRuleChains = doGetTypedWithPageLink("/api/edge/" + edge.getUuidId() + "/ruleChains?",
-                new TypeReference<PageData<RuleChain>>() {}, new PageLink(100)).getData();
+                new TypeReference<PageData<RuleChain>>() {
+                }, new PageLink(100)).getData();
         Assert.assertTrue(edgeRuleChains.contains(ruleChain));
         testAutoGeneratedCodeByProtobuf(ruleChainUpdateMsg);
     }
@@ -684,6 +699,27 @@ abstract public class AbstractEdgeTest extends AbstractControllerTest {
         // delete dashboard
         doDelete("/api/dashboard/" + dashboardId.getId())
                 .andExpect(status().isOk());
+    }
+
+
+    protected ObjectNode createDefaultRpc() {
+        return createDefaultRpc(1);
+    }
+
+    protected ObjectNode createDefaultRpc(Integer value) {
+        ObjectNode rpc = JacksonUtil.newObjectNode();
+        rpc.put("method", "setGpio");
+
+        ObjectNode params = JacksonUtil.newObjectNode();
+
+        params.put("pin", 7);
+        params.put("value", value);
+
+        rpc.set("params", params);
+        rpc.put("persistent", true);
+        rpc.put("timeout", 5000);
+
+        return rpc;
     }
 
 }

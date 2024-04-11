@@ -27,7 +27,10 @@ import {
   ViewChild,
   ViewEncapsulation
 } from '@angular/core';
-import { timeSeriesChartKeyDefaultSettings, TimeSeriesChartKeySettings } from '@home/components/widget/lib/chart/time-series-chart.models';
+import {
+  timeSeriesChartKeyDefaultSettings,
+  TimeSeriesChartKeySettings
+} from '@home/components/widget/lib/chart/time-series-chart.models';
 import { WidgetContext } from '@home/models/widget-component.models';
 import { Observable } from 'rxjs';
 import { backgroundStyle, ComponentStyle, overlayStyle, textStyle } from '@shared/models/widget-settings.models';
@@ -40,6 +43,7 @@ import {
   TimeSeriesChartWidgetSettings
 } from '@home/components/widget/lib/chart/time-series-chart-widget.models';
 import { mergeDeep } from '@core/utils';
+import { WidgetComponent } from '@home/components/widget/widget.component';
 
 @Component({
   selector: 'tb-time-series-chart-widget',
@@ -70,17 +74,19 @@ export class TimeSeriesChartWidgetComponent implements OnInit, OnDestroy, AfterV
 
   backgroundStyle$: Observable<ComponentStyle>;
   overlayStyle: ComponentStyle = {};
-  overlayEnabled: boolean;
   padding: string;
 
+  legendColumnTitleStyle: ComponentStyle;
   legendLabelStyle: ComponentStyle;
   disabledLegendLabelStyle: ComponentStyle;
+  legendValueStyle: ComponentStyle;
 
   displayLegendValues = false;
 
   private timeSeriesChart: TbTimeSeriesChart;
 
-  constructor(private imagePipe: ImagePipe,
+  constructor(public widgetComponent: WidgetComponent,
+              private imagePipe: ImagePipe,
               private sanitizer: DomSanitizer,
               private renderer: Renderer2,
               private cd: ChangeDetectorRef) {
@@ -92,8 +98,7 @@ export class TimeSeriesChartWidgetComponent implements OnInit, OnDestroy, AfterV
 
     this.backgroundStyle$ = backgroundStyle(this.settings.background, this.imagePipe, this.sanitizer);
     this.overlayStyle = overlayStyle(this.settings.background.overlay);
-    this.overlayEnabled = this.settings.background.overlay.enabled;
-    this.padding = this.overlayEnabled ? undefined : this.settings.padding;
+    this.padding = this.settings.background.overlay.enabled ? undefined : this.settings.padding;
 
     this.showLegend = this.settings.showLegend;
     if (this.showLegend) {
@@ -117,9 +122,13 @@ export class TimeSeriesChartWidgetComponent implements OnInit, OnDestroy, AfterV
     if (this.showLegend) {
       this.horizontalLegendPosition = [LegendPosition.left, LegendPosition.right].includes(this.legendConfig.position);
       this.legendClass = `legend-${this.legendConfig.position}`;
+      this.legendColumnTitleStyle = textStyle(this.settings.legendColumnTitleFont);
+      this.legendColumnTitleStyle.color = this.settings.legendColumnTitleColor;
       this.legendLabelStyle = textStyle(this.settings.legendLabelFont);
       this.disabledLegendLabelStyle = textStyle(this.settings.legendLabelFont);
       this.legendLabelStyle.color = this.settings.legendLabelColor;
+      this.legendValueStyle = textStyle(this.settings.legendValueFont);
+      this.legendValueStyle.color = this.settings.legendValueColor;
       this.displayLegendValues = this.legendConfig.showMin || this.legendConfig.showMax ||
         this.legendConfig.showAvg || this.legendConfig.showTotal || this.legendConfig.showLatest;
     }
@@ -162,6 +171,6 @@ export class TimeSeriesChartWidgetComponent implements OnInit, OnDestroy, AfterV
   }
 
   public toggleLegendKey(legendKey: LegendKey) {
-    this.timeSeriesChart.toggleKey(legendKey.dataKey);
+    this.timeSeriesChart.toggleKey(legendKey.dataKey, legendKey.dataIndex);
   }
 }

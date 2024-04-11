@@ -16,19 +16,20 @@
 package org.thingsboard.server.dao.model.sql;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import jakarta.persistence.Column;
+import jakarta.persistence.Convert;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Table;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.hibernate.annotations.Type;
 import org.thingsboard.server.common.data.id.UserCredentialsId;
 import org.thingsboard.server.common.data.id.UserId;
 import org.thingsboard.server.common.data.security.UserCredentials;
 import org.thingsboard.server.dao.model.BaseEntity;
 import org.thingsboard.server.dao.model.BaseSqlEntity;
 import org.thingsboard.server.dao.model.ModelConstants;
+import org.thingsboard.server.dao.util.mapping.JsonConverter;
 
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Table;
 import java.util.UUID;
 
 @Data
@@ -49,10 +50,16 @@ public final class UserCredentialsEntity extends BaseSqlEntity<UserCredentials> 
     @Column(name = ModelConstants.USER_CREDENTIALS_ACTIVATE_TOKEN_PROPERTY, unique = true)
     private String activateToken;
 
+    @Column(name = ModelConstants.USER_CREDENTIALS_ACTIVATE_TOKEN_EXP_TIME_PROPERTY)
+    private Long activateTokenExpTime;
+
     @Column(name = ModelConstants.USER_CREDENTIALS_RESET_TOKEN_PROPERTY, unique = true)
     private String resetToken;
 
-    @Type(type = "json")
+    @Column(name = ModelConstants.USER_CREDENTIALS_RESET_TOKEN_EXP_TIME_PROPERTY)
+    private Long resetTokenExpTime;
+
+    @Convert(converter = JsonConverter.class)
     @Column(name = ModelConstants.USER_CREDENTIALS_ADDITIONAL_PROPERTY)
     private JsonNode additionalInfo;
 
@@ -71,7 +78,9 @@ public final class UserCredentialsEntity extends BaseSqlEntity<UserCredentials> 
         this.enabled = userCredentials.isEnabled();
         this.password = userCredentials.getPassword();
         this.activateToken = userCredentials.getActivateToken();
+        this.activateTokenExpTime = userCredentials.getActivateTokenExpTime();
         this.resetToken = userCredentials.getResetToken();
+        this.resetTokenExpTime = userCredentials.getResetTokenExpTime();
         this.additionalInfo = userCredentials.getAdditionalInfo();
     }
 
@@ -85,7 +94,9 @@ public final class UserCredentialsEntity extends BaseSqlEntity<UserCredentials> 
         userCredentials.setEnabled(enabled);
         userCredentials.setPassword(password);
         userCredentials.setActivateToken(activateToken);
+        userCredentials.setActivateTokenExpTime(activateTokenExpTime);
         userCredentials.setResetToken(resetToken);
+        userCredentials.setResetTokenExpTime(resetTokenExpTime);
         userCredentials.setAdditionalInfo(additionalInfo);
         return userCredentials;
     }

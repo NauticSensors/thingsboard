@@ -23,6 +23,10 @@ import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.ListeningExecutorService;
 import com.google.common.util.concurrent.MoreExecutors;
+import jakarta.annotation.Nonnull;
+import jakarta.annotation.Nullable;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 import lombok.Setter;
@@ -36,6 +40,7 @@ import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.common.util.ThingsBoardExecutors;
 import org.thingsboard.server.cluster.TbClusterService;
 import org.thingsboard.server.common.data.ApiUsageRecordKey;
+import org.thingsboard.server.common.data.AttributeScope;
 import org.thingsboard.server.common.data.Device;
 import org.thingsboard.server.common.data.DeviceIdInfo;
 import org.thingsboard.server.common.data.EntityType;
@@ -80,10 +85,6 @@ import org.thingsboard.server.queue.util.TbCoreComponent;
 import org.thingsboard.server.service.partition.AbstractPartitionBasedService;
 import org.thingsboard.server.service.telemetry.TelemetrySubscriptionService;
 
-import javax.annotation.Nonnull;
-import javax.annotation.Nullable;
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
@@ -156,7 +157,8 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
     private final DbTypeInfoComponent dbTypeInfoComponent;
     private final TbApiUsageReportClient apiUsageReportClient;
     private final NotificationRuleProcessor notificationRuleProcessor;
-    @Autowired @Lazy
+    @Autowired
+    @Lazy
     private TelemetrySubscriptionService tsSubService;
 
     @Value("${state.defaultInactivityTimeoutInSec}")
@@ -361,14 +363,16 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
                     if (proto.getAdded()) {
                         Futures.addCallback(fetchDeviceState(device), new FutureCallback<>() {
                             @Override
-                            public void onSuccess(@Nullable DeviceStateData state) {
+                            public void onSuccess(DeviceStateData state) {
                                 TopicPartitionInfo tpi = partitionService.resolve(ServiceType.TB_CORE, tenantId, device.getId());
-                                if (addDeviceUsingState(tpi, state)) {
-                                    save(deviceId, ACTIVITY_STATE, false);
+                                Set<DeviceId> deviceIds = partitionedEntities.get(tpi);
+                                boolean isMyPartition = deviceIds != null;
+                                if (isMyPartition) {
+                                    deviceIds.add(state.getDeviceId());
+                                    initializeActivityState(deviceId, state);
                                     callback.onSuccess();
                                 } else {
-                                    log.debug("[{}][{}] Device belongs to external partition. Probably rebalancing is in progress. Topic: {}"
-                                            , tenantId, deviceId, tpi.getFullTopicName());
+                                    log.debug("[{}][{}] Device belongs to external partition. Probably rebalancing is in progress. Topic: {}", tenantId, deviceId, tpi.getFullTopicName());
                                     callback.onFailure(new RuntimeException("Device belongs to external partition " + tpi.getFullTopicName() + "!"));
                                 }
                             }
@@ -397,6 +401,21 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
             log.trace("Failed to process queue msg: [{}]", proto, e);
             callback.onFailure(e);
         }
+    }
+
+    private void onDeviceDeleted(TenantId tenantId, DeviceId deviceId) {
+        cleanupEntity(deviceId);
+        TopicPartitionInfo tpi = partitionService.resolve(ServiceType.TB_CORE, tenantId, deviceId);
+        Set<DeviceId> deviceIdSet = partitionedEntities.get(tpi);
+        if (deviceIdSet != null) {
+            deviceIdSet.remove(deviceId);
+        }
+    }
+
+    private void initializeActivityState(DeviceId deviceId, DeviceStateData fetchedState) {
+        DeviceStateData cachedState = deviceStates.putIfAbsent(fetchedState.getDeviceId(), fetchedState);
+        boolean activityState = Objects.requireNonNullElse(cachedState, fetchedState).getState().isActive();
+        save(deviceId, ACTIVITY_STATE, activityState);
     }
 
     @Override
@@ -435,10 +454,16 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
                         }
                         if (devicePackFutureHolder.future == null || !devicePackFutureHolder.future.isCancelled()) {
                             for (var state : states) {
-                                if (!addDeviceUsingState(entry.getKey(), state)) {
-                                    return;
+                                TopicPartitionInfo tpi = entry.getKey();
+                                Set<DeviceId> deviceIds = partitionedEntities.get(tpi);
+                                boolean isMyPartition = deviceIds != null;
+                                if (isMyPartition) {
+                                    deviceIds.add(state.getDeviceId());
+                                    deviceStates.putIfAbsent(state.getDeviceId(), state);
+                                    checkAndUpdateState(state.getDeviceId(), state);
+                                } else {
+                                    log.debug("[{}] Device belongs to external partition {}", state.getDeviceId(), tpi.getFullTopicName());
                                 }
-                                checkAndUpdateState(state.getDeviceId(), state);
                             }
                             log.info("[{}] Initialized {} out of {} device states", entry.getKey().getPartition().orElse(0), counter.addAndGet(states.size()), entry.getValue().size());
                         }
@@ -471,18 +496,6 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
                     save(deviceId, INACTIVITY_ALARM_TIME, 0L);
                 }
             }
-        }
-    }
-
-    private boolean addDeviceUsingState(TopicPartitionInfo tpi, DeviceStateData state) {
-        Set<DeviceId> deviceIds = partitionedEntities.get(tpi);
-        if (deviceIds != null) {
-            deviceIds.add(state.getDeviceId());
-            deviceStates.putIfAbsent(state.getDeviceId(), state);
-            return true;
-        } else {
-            log.debug("[{}] Device belongs to external partition {}", state.getDeviceId(), tpi.getFullTopicName());
-            return false;
         }
     }
 
@@ -618,15 +631,6 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
         return cleanup;
     }
 
-    private void onDeviceDeleted(TenantId tenantId, DeviceId deviceId) {
-        cleanupEntity(deviceId);
-        TopicPartitionInfo tpi = partitionService.resolve(ServiceType.TB_CORE, tenantId, deviceId);
-        Set<DeviceId> deviceIdSet = partitionedEntities.get(tpi);
-        if (deviceIdSet != null) {
-            deviceIdSet.remove(deviceId);
-        }
-    }
-
     @Override
     protected void cleanupEntityOnPartitionRemoval(DeviceId deviceId) {
         cleanupEntity(deviceId);
@@ -643,7 +647,7 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
             ListenableFuture<List<TsKvEntry>> tsData = tsService.findLatest(TenantId.SYS_TENANT_ID, device.getId(), PERSISTENT_ATTRIBUTES);
             future = Futures.transform(tsData, extractDeviceStateData(device), MoreExecutors.directExecutor());
         } else {
-            ListenableFuture<List<AttributeKvEntry>> attrData = attributesService.find(TenantId.SYS_TENANT_ID, device.getId(), SERVER_SCOPE, PERSISTENT_ATTRIBUTES);
+            ListenableFuture<List<AttributeKvEntry>> attrData = attributesService.find(TenantId.SYS_TENANT_ID, device.getId(), AttributeScope.SERVER_SCOPE, PERSISTENT_ATTRIBUTES);
             future = Futures.transform(attrData, extractDeviceStateData(device), MoreExecutors.directExecutor());
         }
         return transformInactivityTimeout(future);
@@ -654,7 +658,7 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
             if (!persistToTelemetry || deviceStateData.getState().getInactivityTimeout() != defaultInactivityTimeoutMs) {
                 return future; //fail fast
             }
-            var attributesFuture = attributesService.find(TenantId.SYS_TENANT_ID, deviceStateData.getDeviceId(), SERVER_SCOPE, INACTIVITY_TIMEOUT);
+            var attributesFuture = attributesService.find(TenantId.SYS_TENANT_ID, deviceStateData.getDeviceId(), AttributeScope.SERVER_SCOPE, INACTIVITY_TIMEOUT);
             return Futures.transform(attributesFuture, attributes -> {
                 attributes.flatMap(KvEntry::getLongValue).ifPresent((inactivityTimeout) -> {
                     if (inactivityTimeout > 0) {
@@ -867,7 +871,7 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
                     Collections.singletonList(new BasicTsKvEntry(getCurrentTimeMillis(), new LongDataEntry(key, value))),
                     telemetryTtl, new TelemetrySaveCallback<>(deviceId, key, value));
         } else {
-            tsSubService.saveAttrAndNotify(TenantId.SYS_TENANT_ID, deviceId, SERVER_SCOPE, key, value, new TelemetrySaveCallback<>(deviceId, key, value));
+            tsSubService.saveAttrAndNotify(TenantId.SYS_TENANT_ID, deviceId, AttributeScope.SERVER_SCOPE, key, value, new TelemetrySaveCallback<>(deviceId, key, value));
         }
     }
 
@@ -878,7 +882,7 @@ public class DefaultDeviceStateService extends AbstractPartitionBasedService<Dev
                     Collections.singletonList(new BasicTsKvEntry(getCurrentTimeMillis(), new BooleanDataEntry(key, value))),
                     telemetryTtl, new TelemetrySaveCallback<>(deviceId, key, value));
         } else {
-            tsSubService.saveAttrAndNotify(TenantId.SYS_TENANT_ID, deviceId, SERVER_SCOPE, key, value, new TelemetrySaveCallback<>(deviceId, key, value));
+            tsSubService.saveAttrAndNotify(TenantId.SYS_TENANT_ID, deviceId, AttributeScope.SERVER_SCOPE, key, value, new TelemetrySaveCallback<>(deviceId, key, value));
         }
     }
 

@@ -20,11 +20,11 @@ import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.thingsboard.common.util.JacksonUtil;
-import org.thingsboard.server.cluster.TbClusterService;
 import org.thingsboard.server.common.data.Customer;
 import org.thingsboard.server.common.data.DashboardInfo;
 import org.thingsboard.server.common.data.StringUtils;
@@ -35,7 +35,7 @@ import org.thingsboard.server.common.data.id.DashboardId;
 import org.thingsboard.server.common.data.id.IdBased;
 import org.thingsboard.server.common.data.id.TenantId;
 import org.thingsboard.server.common.data.oauth2.OAuth2MapperConfig;
-import org.thingsboard.server.common.data.oauth2.OAuth2Registration;
+import org.thingsboard.server.common.data.oauth2.OAuth2Client;
 import org.thingsboard.server.common.data.page.PageData;
 import org.thingsboard.server.common.data.page.PageLink;
 import org.thingsboard.server.common.data.security.Authority;
@@ -89,7 +89,7 @@ public abstract class AbstractOAuth2ClientMapper {
     protected TbTenantProfileCache tenantProfileCache;
 
     @Autowired
-    protected TbClusterService tbClusterService;
+    private ApplicationEventPublisher eventPublisher;
 
     @Value("${edges.enabled}")
     @Getter
@@ -97,9 +97,9 @@ public abstract class AbstractOAuth2ClientMapper {
 
     private final Lock userCreationLock = new ReentrantLock();
 
-    protected SecurityUser getOrCreateSecurityUserFromOAuth2User(OAuth2User oauth2User, OAuth2Registration registration) {
+    protected SecurityUser getOrCreateSecurityUserFromOAuth2User(OAuth2User oauth2User, OAuth2Client oAuth2Client) {
 
-        OAuth2MapperConfig config = registration.getMapperConfig();
+        OAuth2MapperConfig config = oAuth2Client.getMapperConfig();
 
         UserPrincipal principal = new UserPrincipal(UserPrincipal.Type.USER_NAME, oauth2User.getEmail());
 
@@ -143,9 +143,9 @@ public abstract class AbstractOAuth2ClientMapper {
                         }
                     }
 
-                    if (registration.getAdditionalInfo() != null &&
-                            registration.getAdditionalInfo().has("providerName")) {
-                        additionalInfo.put("authProviderName", registration.getAdditionalInfo().get("providerName").asText());
+                    if (oAuth2Client.getAdditionalInfo() != null &&
+                            oAuth2Client.getAdditionalInfo().has("providerName")) {
+                        additionalInfo.put("authProviderName", oAuth2Client.getAdditionalInfo().get("providerName").asText());
                     }
 
                     user.setAdditionalInfo(additionalInfo);

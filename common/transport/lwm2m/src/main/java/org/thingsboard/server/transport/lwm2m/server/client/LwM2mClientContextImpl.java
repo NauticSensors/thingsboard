@@ -396,7 +396,7 @@ public class LwM2mClientContextImpl implements LwM2mClientContext {
         Arrays.stream(client.getRegistration().getObjectLinks()).forEach(link -> {
             LwM2mPath pathIds = new LwM2mPath(link.getUriReference());
             if (!pathIds.isRoot()) {
-                clientObjects.add(convertObjectIdToVersionedId(link.getUriReference(), client.getRegistration()));
+                clientObjects.add(convertObjectIdToVersionedId(link.getUriReference(), client));
             }
         });
         return (clientObjects.size() > 0) ? clientObjects : null;
@@ -415,9 +415,6 @@ public class LwM2mClientContextImpl implements LwM2mClientContext {
             var clientProfile = getProfile(client.getProfileId());
             profileSettings = clientProfile.getClientLwM2mSettings();
             powerMode = profileSettings.getPowerMode();
-            if (powerMode == null) {
-                powerMode = PowerMode.DRX;
-            }
         }
         if (powerMode == null || PowerMode.DRX.equals(powerMode) || otaUpdateService.isOtaDownloading(client)) {
             return true;
@@ -464,9 +461,6 @@ public class LwM2mClientContextImpl implements LwM2mClientContext {
             var clientProfile = getProfile(client.getProfileId());
             profileSettings = clientProfile.getClientLwM2mSettings();
             powerMode = profileSettings.getPowerMode();
-            if (powerMode == null) {
-                powerMode = PowerMode.DRX;
-            }
         }
         if (powerMode == null || PowerMode.DRX.equals(powerMode)) {
             client.updateLastUplinkTime();
