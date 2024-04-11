@@ -25,10 +25,12 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Service;
 import org.thingsboard.common.util.JacksonUtil;
+import org.thingsboard.server.common.data.AttributeScope;
 import org.thingsboard.server.common.data.EntityType;
 import org.thingsboard.server.common.data.HasName;
 import org.thingsboard.server.common.data.StringUtils;
 import org.thingsboard.server.common.data.alarm.AlarmComment;
+import org.thingsboard.server.common.data.alarm.AlarmInfo;
 import org.thingsboard.server.common.data.audit.ActionStatus;
 import org.thingsboard.server.common.data.audit.ActionType;
 import org.thingsboard.server.common.data.audit.AuditLog;
@@ -85,31 +87,31 @@ public class AuditLogServiceImpl implements AuditLogService {
     @Override
     public PageData<AuditLog> findAuditLogsByTenantIdAndCustomerId(TenantId tenantId, CustomerId customerId, List<ActionType> actionTypes, TimePageLink pageLink) {
         log.trace("Executing findAuditLogsByTenantIdAndCustomerId [{}], [{}], [{}]", tenantId, customerId, pageLink);
-        validateId(tenantId, INCORRECT_TENANT_ID + tenantId);
-        validateId(customerId, "Incorrect customerId " + customerId);
+        validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
+        validateId(customerId, id -> "Incorrect customerId " + id);
         return auditLogDao.findAuditLogsByTenantIdAndCustomerId(tenantId.getId(), customerId, actionTypes, pageLink);
     }
 
     @Override
     public PageData<AuditLog> findAuditLogsByTenantIdAndUserId(TenantId tenantId, UserId userId, List<ActionType> actionTypes, TimePageLink pageLink) {
         log.trace("Executing findAuditLogsByTenantIdAndUserId [{}], [{}], [{}]", tenantId, userId, pageLink);
-        validateId(tenantId, INCORRECT_TENANT_ID + tenantId);
-        validateId(userId, "Incorrect userId" + userId);
+        validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
+        validateId(userId, id -> "Incorrect userId" + id);
         return auditLogDao.findAuditLogsByTenantIdAndUserId(tenantId.getId(), userId, actionTypes, pageLink);
     }
 
     @Override
     public PageData<AuditLog> findAuditLogsByTenantIdAndEntityId(TenantId tenantId, EntityId entityId, List<ActionType> actionTypes, TimePageLink pageLink) {
         log.trace("Executing findAuditLogsByTenantIdAndEntityId [{}], [{}], [{}]", tenantId, entityId, pageLink);
-        validateId(tenantId, INCORRECT_TENANT_ID + tenantId);
-        validateEntityId(entityId, INCORRECT_TENANT_ID + entityId);
+        validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
+        validateEntityId(entityId, id -> "Incorrect entityId" + id);
         return auditLogDao.findAuditLogsByTenantIdAndEntityId(tenantId.getId(), entityId, actionTypes, pageLink);
     }
 
     @Override
     public PageData<AuditLog> findAuditLogsByTenantId(TenantId tenantId, List<ActionType> actionTypes, TimePageLink pageLink) {
         log.trace("Executing findAuditLogs [{}]", pageLink);
-        validateId(tenantId, INCORRECT_TENANT_ID + tenantId);
+        validateId(tenantId, id -> INCORRECT_TENANT_ID + id);
         return auditLogDao.findAuditLogsByTenantId(tenantId.getId(), actionTypes, pageLink);
     }
 
@@ -121,15 +123,7 @@ public class AuditLogServiceImpl implements AuditLogService {
             JsonNode actionData = constructActionData(entityId, entity, actionType, additionalInfo);
             ActionStatus actionStatus = ActionStatus.SUCCESS;
             String failureDetails = "";
-            String entityName = "N/A";
-            if (entity != null) {
-                entityName = entity.getName();
-            } else {
-                try {
-                    entityName = entityService.fetchEntityName(tenantId, entityId).orElse(entityName);
-                } catch (Exception ignored) {
-                }
-            }
+            String entityName = getEntityName(tenantId, entityId, entity, actionType);
             if (e != null) {
                 actionStatus = ActionStatus.FAILURE;
                 failureDetails = getFailureStack(e);
@@ -153,6 +147,27 @@ public class AuditLogServiceImpl implements AuditLogService {
                     failureDetails);
         } else {
             return null;
+        }
+    }
+
+    private <E extends HasName, I extends EntityId> String getEntityName(TenantId tenantId, I entityId, E entity, ActionType actionType) {
+        if (entity == null) {
+            return fetchEntityName(tenantId, entityId);
+        }
+        if (!actionType.isAlarmAction()) {
+            return entity.getName();
+        }
+        if (entity instanceof AlarmInfo alarmInfo) {
+            return alarmInfo.getOriginatorName();
+        }
+        return fetchEntityName(tenantId, entityId);
+    }
+
+    private <I extends EntityId> String fetchEntityName(TenantId tenantId, I entityId) {
+        try {
+            return entityService.fetchEntityName(tenantId, entityId).orElse("N/A");
+        } catch (Exception ignored) {
+            return "N/A";
         }
     }
 
@@ -191,6 +206,10 @@ public class AuditLogServiceImpl implements AuditLogService {
                 actionData.set("comment", comment.getComment());
                 break;
             case ALARM_DELETE:
+                EntityId alarmId = extractParameter(EntityId.class, additionalInfo);
+                actionData.put("alarmId", alarmId != null ? alarmId.toString() : null);
+                actionData.put("originatorId", entityId.toString());
+                break;
             case DELETED:
             case ACTIVATED:
             case SUSPENDED:
@@ -200,10 +219,10 @@ public class AuditLogServiceImpl implements AuditLogService {
                 break;
             case ATTRIBUTES_UPDATED:
                 actionData.put("entityId", entityId.toString());
-                String scope = extractParameter(String.class, 0, additionalInfo);
+                AttributeScope scope = extractParameter(AttributeScope.class, 0, additionalInfo);
                 @SuppressWarnings("unchecked")
                 List<AttributeKvEntry> attributes = extractParameter(List.class, 1, additionalInfo);
-                actionData.put("scope", scope);
+                actionData.put("scope", scope.name());
                 ObjectNode attrsNode = JacksonUtil.newObjectNode();
                 if (attributes != null) {
                     for (AttributeKvEntry attr : attributes) {
@@ -215,8 +234,8 @@ public class AuditLogServiceImpl implements AuditLogService {
             case ATTRIBUTES_DELETED:
             case ATTRIBUTES_READ:
                 actionData.put("entityId", entityId.toString());
-                scope = extractParameter(String.class, 0, additionalInfo);
-                actionData.put("scope", scope);
+                scope = extractParameter(AttributeScope.class, 0, additionalInfo);
+                actionData.put("scope", scope.name());
                 @SuppressWarnings("unchecked")
                 List<String> keys = extractParameter(List.class, 1, additionalInfo);
                 ArrayNode attrsArrayNode = actionData.putArray("attributes");
@@ -407,8 +426,12 @@ public class AuditLogServiceImpl implements AuditLogService {
         }
 
         return executor.submit(() -> {
-            AuditLog auditLog = auditLogDao.save(tenantId, auditLogEntry);
-            auditLogSink.logAction(auditLog);
+            try {
+                AuditLog auditLog = auditLogDao.save(tenantId, auditLogEntry);
+                auditLogSink.logAction(auditLog);
+            } catch (Throwable e) {
+                log.error("[{}] Failed to save audit log: {}", tenantId, auditLogEntry, e);
+            }
             return null;
         });
     }

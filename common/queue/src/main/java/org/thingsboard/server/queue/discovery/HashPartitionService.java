@@ -17,6 +17,8 @@ package org.thingsboard.server.queue.discovery;
 
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
+import jakarta.annotation.PostConstruct;
+import lombok.Data;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.ApplicationEventPublisher;
@@ -35,7 +37,6 @@ import org.thingsboard.server.queue.discovery.event.PartitionChangeEvent;
 import org.thingsboard.server.queue.discovery.event.ServiceListChangedEvent;
 import org.thingsboard.server.queue.util.AfterStartUp;
 
-import javax.annotation.PostConstruct;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -50,6 +51,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
 import java.util.stream.Collectors;
 
+import static org.thingsboard.server.common.data.DataConstants.EDGE_QUEUE_NAME;
 import static org.thingsboard.server.common.data.DataConstants.MAIN_QUEUE_NAME;
 
 @Service
@@ -58,12 +60,16 @@ public class HashPartitionService implements PartitionService {
 
     @Value("${queue.core.topic}")
     private String coreTopic;
-    @Value("${queue.core.partitions:100}")
+    @Value("${queue.core.partitions:10}")
     private Integer corePartitions;
     @Value("${queue.vc.topic:tb_version_control}")
     private String vcTopic;
     @Value("${queue.vc.partitions:10}")
     private Integer vcPartitions;
+    @Value("${queue.edge.topic:tb_edge}")
+    private String edgeTopic;
+    @Value("${queue.edge.partitions:10}")
+    private Integer edgePartitions;
     @Value("${queue.partitions.hash_function_name:murmur3_128}")
     private String hashFunctionName;
 
@@ -77,6 +83,7 @@ public class HashPartitionService implements PartitionService {
 
     private final ConcurrentMap<QueueKey, String> partitionTopicsMap = new ConcurrentHashMap<>();
     private final ConcurrentMap<QueueKey, Integer> partitionSizesMap = new ConcurrentHashMap<>();
+    private final ConcurrentMap<QueueKey, QueueConfig> queueConfigs = new ConcurrentHashMap<>();
 
     private final ConcurrentMap<TenantId, TenantRoutingInfo> tenantRoutingInfoMap = new ConcurrentHashMap<>();
 
@@ -112,6 +119,10 @@ public class HashPartitionService implements PartitionService {
         if (!isTransport(serviceInfoProvider.getServiceType())) {
             doInitRuleEnginePartitions();
         }
+
+        QueueKey edgeKey = coreKey.withQueueName(EDGE_QUEUE_NAME);
+        partitionSizesMap.put(edgeKey, edgePartitions);
+        partitionTopicsMap.put(edgeKey, edgeTopic);
     }
 
     @AfterStartUp(order = AfterStartUp.QUEUE_INFO_INITIALIZATION)
@@ -132,6 +143,7 @@ public class HashPartitionService implements PartitionService {
             QueueKey queueKey = new QueueKey(ServiceType.TB_RULE_ENGINE, queue);
             partitionTopicsMap.put(queueKey, queue.getQueueTopic());
             partitionSizesMap.put(queueKey, queue.getPartitions());
+            queueConfigs.put(queueKey, new QueueConfig(queue));
         });
     }
 
@@ -174,10 +186,12 @@ public class HashPartitionService implements PartitionService {
     @Override
     public void updateQueues(List<TransportProtos.QueueUpdateMsg> queueUpdateMsgs) {
         for (TransportProtos.QueueUpdateMsg queueUpdateMsg : queueUpdateMsgs) {
-            TenantId tenantId = TenantId.fromUUID(new UUID(queueUpdateMsg.getTenantIdMSB(), queueUpdateMsg.getTenantIdLSB()));
-            QueueKey queueKey = new QueueKey(ServiceType.TB_RULE_ENGINE, queueUpdateMsg.getQueueName(), tenantId);
-            partitionTopicsMap.put(queueKey, queueUpdateMsg.getQueueTopic());
-            partitionSizesMap.put(queueKey, queueUpdateMsg.getPartitions());
+            QueueRoutingInfo queueRoutingInfo = new QueueRoutingInfo(queueUpdateMsg);
+            TenantId tenantId = queueRoutingInfo.getTenantId();
+            QueueKey queueKey = new QueueKey(ServiceType.TB_RULE_ENGINE, queueRoutingInfo.getQueueName(), tenantId);
+            partitionTopicsMap.put(queueKey, queueRoutingInfo.getQueueTopic());
+            partitionSizesMap.put(queueKey, queueRoutingInfo.getPartitions());
+            queueConfigs.put(queueKey, new QueueConfig(queueRoutingInfo));
             if (!tenantId.isSysTenantId()) {
                 tenantRoutingInfoMap.remove(tenantId);
             }
@@ -190,12 +204,9 @@ public class HashPartitionService implements PartitionService {
                 .map(queueDeleteMsg -> {
                     TenantId tenantId = TenantId.fromUUID(new UUID(queueDeleteMsg.getTenantIdMSB(), queueDeleteMsg.getTenantIdLSB()));
                     return new QueueKey(ServiceType.TB_RULE_ENGINE, queueDeleteMsg.getQueueName(), tenantId);
-                })
-                .collect(Collectors.toList());
+                }).toList();
         queueKeys.forEach(queueKey -> {
-            myPartitions.remove(queueKey);
-            partitionTopicsMap.remove(queueKey);
-            partitionSizesMap.remove(queueKey);
+            removeQueue(queueKey);
             evictTenantInfo(queueKey.getTenantId());
         });
         if (serviceInfoProvider.isService(ServiceType.TB_RULE_ENGINE)) {
@@ -207,14 +218,16 @@ public class HashPartitionService implements PartitionService {
     @Override
     public void removeTenant(TenantId tenantId) {
         List<QueueKey> queueKeys = partitionSizesMap.keySet().stream()
-                .filter(queueKey -> tenantId.equals(queueKey.getTenantId()))
-                .collect(Collectors.toList());
-        queueKeys.forEach(queueKey -> {
-            myPartitions.remove(queueKey);
-            partitionTopicsMap.remove(queueKey);
-            partitionSizesMap.remove(queueKey);
-        });
+                .filter(queueKey -> tenantId.equals(queueKey.getTenantId())).toList();
+        queueKeys.forEach(this::removeQueue);
         evictTenantInfo(tenantId);
+    }
+
+    private void removeQueue(QueueKey queueKey) {
+        myPartitions.remove(queueKey);
+        partitionTopicsMap.remove(queueKey);
+        partitionSizesMap.remove(queueKey);
+        queueConfigs.remove(queueKey);
     }
 
     @Override
@@ -254,8 +267,66 @@ public class HashPartitionService implements PartitionService {
 
     @Override
     public TopicPartitionInfo resolve(ServiceType serviceType, String queueName, TenantId tenantId, EntityId entityId) {
+        QueueKey queueKey = getQueueKey(serviceType, queueName, tenantId);
+        return resolve(queueKey, entityId);
+    }
+
+    @Override
+    public TopicPartitionInfo resolve(ServiceType serviceType, String queueName, TenantId tenantId, EntityId entityId, Integer partition) {
+        QueueKey queueKey = getQueueKey(serviceType, queueName, tenantId);
+        if (partition != null) {
+            return buildTopicPartitionInfo(queueKey, partition);
+        } else {
+            return resolve(queueKey, entityId);
+        }
+    }
+
+    @Override
+    public TopicPartitionInfo resolve(ServiceType serviceType, TenantId tenantId, EntityId entityId) {
+        return resolve(serviceType, null, tenantId, entityId);
+    }
+
+    @Override
+    public List<TopicPartitionInfo> resolveAll(ServiceType serviceType, String queueName, TenantId tenantId, EntityId entityId) {
+        QueueKey queueKey = getQueueKey(serviceType, queueName, tenantId);
+        TopicPartitionInfo tpi = resolve(queueKey, entityId);
+        if (serviceType != ServiceType.TB_RULE_ENGINE || tpi.getPartition().isEmpty()) {
+            return List.of(tpi);
+        }
+
+        QueueConfig queueConfig = queueConfigs.get(queueKey);
+        if (queueConfig != null && queueConfig.isDuplicateMsgToAllPartitions()) {
+            int partition = tpi.getPartition().get();
+            Integer partitionsCount = partitionSizesMap.get(queueKey);
+
+            List<TopicPartitionInfo> partitions = new ArrayList<>(partitionsCount);
+            partitions.add(tpi);
+            for (int i = 0; i < partitionsCount; i++) {
+                if (i != partition) {
+                    partitions.add(buildTopicPartitionInfo(queueKey, i, false));
+                }
+            }
+            return partitions;
+        } else {
+            return Collections.singletonList(tpi);
+        }
+    }
+
+    private TopicPartitionInfo resolve(QueueKey queueKey, EntityId entityId) {
+        Integer partitionSize = partitionSizesMap.get(queueKey);
+        if (partitionSize == null) {
+            throw new IllegalStateException("Partitions info for queue " + queueKey + " is missing");
+        }
+
+        int hash = hash(entityId.getId());
+        int partition = Math.abs(hash % partitionSize);
+
+        return buildTopicPartitionInfo(queueKey, partition);
+    }
+
+    private QueueKey getQueueKey(ServiceType serviceType, String queueName, TenantId tenantId) {
         TenantId isolatedOrSystemTenantId = getIsolatedOrSystemTenantId(serviceType, tenantId);
-        if (queueName == null) {
+        if (queueName == null || queueName.isEmpty()) {
             queueName = MAIN_QUEUE_NAME;
         }
         QueueKey queueKey = new QueueKey(serviceType, queueName, isolatedOrSystemTenantId);
@@ -270,12 +341,7 @@ public class HashPartitionService implements PartitionService {
                 log.warn("Using queue {} instead of isolated {} for tenant {}", queueKey, queueName, isolatedOrSystemTenantId);
             }
         }
-        return resolve(queueKey, entityId);
-    }
-
-    @Override
-    public TopicPartitionInfo resolve(ServiceType serviceType, TenantId tenantId, EntityId entityId) {
-        return resolve(serviceType, null, tenantId, entityId);
+        return queueKey;
     }
 
     @Override
@@ -286,18 +352,6 @@ public class HashPartitionService implements PartitionService {
             log.warn("Tenant with id {} not found", tenantId, new RuntimeException("stacktrace"));
             return false;
         }
-    }
-
-    private TopicPartitionInfo resolve(QueueKey queueKey, EntityId entityId) {
-        Integer partitionSize = partitionSizesMap.get(queueKey);
-        if (partitionSize == null) {
-            throw new IllegalStateException("Partitions info for queue " + queueKey + " is missing");
-        }
-
-        int hash = hash(entityId.getId());
-        int partition = Math.abs(hash % partitionSize);
-
-        return buildTopicPartitionInfo(queueKey, partition);
     }
 
     @Override
@@ -478,18 +532,17 @@ public class HashPartitionService implements PartitionService {
     }
 
     private TopicPartitionInfo buildTopicPartitionInfo(QueueKey queueKey, int partition) {
-        TopicPartitionInfo.TopicPartitionInfoBuilder tpi = TopicPartitionInfo.builder();
-        tpi.topic(topicService.buildTopicName(partitionTopicsMap.get(queueKey)));
-        tpi.partition(partition);
-        tpi.tenantId(queueKey.getTenantId());
-
         List<Integer> partitions = myPartitions.get(queueKey);
-        if (partitions != null) {
-            tpi.myPartition(partitions.contains(partition));
-        } else {
-            tpi.myPartition(false);
-        }
-        return tpi.build();
+        return buildTopicPartitionInfo(queueKey, partition, partitions != null && partitions.contains(partition));
+    }
+
+    private TopicPartitionInfo buildTopicPartitionInfo(QueueKey queueKey, int partition, boolean myPartition) {
+        return TopicPartitionInfo.builder()
+                .topic(topicService.buildTopicName(partitionTopicsMap.get(queueKey)))
+                .partition(partition)
+                .tenantId(queueKey.getTenantId())
+                .myPartition(myPartition)
+                .build();
     }
 
     private boolean isIsolated(ServiceType serviceType, TenantId tenantId) {
@@ -500,19 +553,17 @@ public class HashPartitionService implements PartitionService {
         if (routingInfo == null) {
             throw new TenantNotFoundException(tenantId);
         }
-        switch (serviceType) {
-            case TB_RULE_ENGINE:
-                return routingInfo.isIsolated();
-            default:
-                return false;
+        if (serviceType == ServiceType.TB_RULE_ENGINE) {
+            return routingInfo.isIsolated();
         }
+        return false;
     }
 
     private TenantRoutingInfo getRoutingInfo(TenantId tenantId) {
         return tenantRoutingInfoMap.computeIfAbsent(tenantId, tenantRoutingInfoService::getRoutingInfo);
     }
 
-    private TenantId getIsolatedOrSystemTenantId(ServiceType serviceType, TenantId tenantId) {
+    protected TenantId getIsolatedOrSystemTenantId(ServiceType serviceType, TenantId tenantId) {
         return isIsolated(serviceType, tenantId) ? tenantId : TenantId.SYS_TENANT_ID;
     }
 
@@ -542,7 +593,10 @@ public class HashPartitionService implements PartitionService {
                         responsibleServices.computeIfAbsent(profileId, k -> new ArrayList<>()).add(instance);
                     }
                 }
-            } else if (ServiceType.TB_CORE.equals(serviceType) || ServiceType.TB_VC_EXECUTOR.equals(serviceType)) {
+            } else if (ServiceType.TB_CORE.equals(serviceType)) {
+                queueServiceList.computeIfAbsent(new QueueKey(serviceType), key -> new ArrayList<>()).add(instance);
+                queueServiceList.computeIfAbsent(new QueueKey(serviceType).withQueueName(EDGE_QUEUE_NAME), key -> new ArrayList<>()).add(instance);
+            } else if (ServiceType.TB_VC_EXECUTOR.equals(serviceType)) {
                 queueServiceList.computeIfAbsent(new QueueKey(serviceType), key -> new ArrayList<>()).add(instance);
             }
         }
@@ -603,20 +657,26 @@ public class HashPartitionService implements PartitionService {
     }
 
     public static HashFunction forName(String name) {
-        switch (name) {
-            case "murmur3_32":
-                return Hashing.murmur3_32();
-            case "murmur3_128":
-                return Hashing.murmur3_128();
-            case "sha256":
-                return Hashing.sha256();
-            default:
-                throw new IllegalArgumentException("Can't find hash function with name " + name);
-        }
+        return switch (name) {
+            case "murmur3_32" -> Hashing.murmur3_32();
+            case "murmur3_128" -> Hashing.murmur3_128();
+            case "sha256" -> Hashing.sha256();
+            default -> throw new IllegalArgumentException("Can't find hash function with name " + name);
+        };
     }
 
     private List<String> toServiceIds(Collection<ServiceInfo> serviceInfos) {
         return serviceInfos.stream().map(ServiceInfo::getServiceId).collect(Collectors.toList());
+    }
+
+    @Data
+    public static class QueueConfig {
+        private boolean duplicateMsgToAllPartitions;
+
+        public QueueConfig(QueueRoutingInfo queueRoutingInfo) {
+            this.duplicateMsgToAllPartitions = queueRoutingInfo.isDuplicateMsgToAllPartitions();
+        }
+
     }
 
 }

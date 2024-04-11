@@ -15,11 +15,16 @@
  */
 package org.thingsboard.server.exception;
 
+import jakarta.servlet.RequestDispatcher;
+import jakarta.servlet.ServletException;
+import jakarta.servlet.http.HttpServletRequest;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.exception.ExceptionUtils;
 import org.springframework.boot.web.servlet.error.ErrorController;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.HttpStatusCode;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.lang.Nullable;
@@ -41,22 +46,17 @@ import org.springframework.web.util.WebUtils;
 import org.thingsboard.common.util.JacksonUtil;
 import org.thingsboard.server.common.data.exception.ThingsboardErrorCode;
 import org.thingsboard.server.common.data.exception.ThingsboardException;
+import org.thingsboard.server.common.msg.tools.MaxPayloadSizeExceededException;
 import org.thingsboard.server.common.msg.tools.TbRateLimitsException;
 import org.thingsboard.server.service.security.exception.AuthMethodNotSupportedException;
 import org.thingsboard.server.service.security.exception.JwtExpiredTokenException;
 import org.thingsboard.server.service.security.exception.UserPasswordExpiredException;
 import org.thingsboard.server.service.security.exception.UserPasswordNotValidException;
 
-import javax.servlet.RequestDispatcher;
-import javax.servlet.ServletException;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
-
-import static javax.servlet.RequestDispatcher.ERROR_EXCEPTION;
 
 @Slf4j
 @Controller
@@ -64,6 +64,7 @@ import static javax.servlet.RequestDispatcher.ERROR_EXCEPTION;
 public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHandler implements AccessDeniedHandler, ErrorController {
 
     private static final Map<HttpStatus, ThingsboardErrorCode> statusToErrorCodeMap = new HashMap<>();
+
     static {
         statusToErrorCodeMap.put(HttpStatus.BAD_REQUEST, ThingsboardErrorCode.BAD_REQUEST_PARAMS);
         statusToErrorCodeMap.put(HttpStatus.UNAUTHORIZED, ThingsboardErrorCode.AUTHENTICATION);
@@ -76,7 +77,9 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
         statusToErrorCodeMap.put(HttpStatus.INTERNAL_SERVER_ERROR, ThingsboardErrorCode.GENERAL);
         statusToErrorCodeMap.put(HttpStatus.SERVICE_UNAVAILABLE, ThingsboardErrorCode.GENERAL);
     }
+
     private static final Map<ThingsboardErrorCode, HttpStatus> errorCodeToStatusMap = new HashMap<>();
+
     static {
         errorCodeToStatusMap.put(ThingsboardErrorCode.GENERAL, HttpStatus.INTERNAL_SERVER_ERROR);
         errorCodeToStatusMap.put(ThingsboardErrorCode.AUTHENTICATION, HttpStatus.UNAUTHORIZED);
@@ -89,6 +92,7 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
         errorCodeToStatusMap.put(ThingsboardErrorCode.TOO_MANY_REQUESTS, HttpStatus.TOO_MANY_REQUESTS);
         errorCodeToStatusMap.put(ThingsboardErrorCode.TOO_MANY_UPDATES, HttpStatus.TOO_MANY_REQUESTS);
         errorCodeToStatusMap.put(ThingsboardErrorCode.SUBSCRIPTION_VIOLATION, HttpStatus.FORBIDDEN);
+        errorCodeToStatusMap.put(ThingsboardErrorCode.VERSION_CONFLICT, HttpStatus.CONFLICT);
     }
 
     private static ThingsboardErrorCode statusToErrorCode(HttpStatus status) {
@@ -104,7 +108,7 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
         HttpStatus httpStatus = Optional.ofNullable(request.getAttribute(RequestDispatcher.ERROR_STATUS_CODE))
                 .map(status -> HttpStatus.resolve(Integer.parseInt(status.toString())))
                 .orElse(HttpStatus.INTERNAL_SERVER_ERROR);
-        String errorMessage = Optional.ofNullable(request.getAttribute(ERROR_EXCEPTION))
+        String errorMessage = Optional.ofNullable(request.getAttribute(RequestDispatcher.ERROR_EXCEPTION))
                 .map(e -> (ExceptionUtils.getMessage((Throwable) e)))
                 .orElse(httpStatus.getReasonPhrase());
         return new ResponseEntity<>(ThingsboardErrorResponse.of(errorMessage, statusToErrorCode(httpStatus), httpStatus), httpStatus);
@@ -144,6 +148,8 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
                     handleAccessDeniedException(response);
                 } else if (exception instanceof AuthenticationException) {
                     handleAuthenticationException((AuthenticationException) exception, response);
+                }  else if (exception instanceof MaxPayloadSizeExceededException) {
+                    handleMaxPayloadSizeExceededException(response, (MaxPayloadSizeExceededException) exception);
                 } else {
                     response.setStatus(HttpStatus.INTERNAL_SERVER_ERROR.value());
                     JacksonUtil.writeValue(response.getWriter(), ThingsboardErrorResponse.of(exception.getMessage(),
@@ -158,13 +164,13 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
     @Override
     protected ResponseEntity<Object> handleExceptionInternal(
             Exception ex, @Nullable Object body,
-            HttpHeaders headers, HttpStatus status,
+            HttpHeaders headers, HttpStatusCode statusCode,
             WebRequest request) {
-        if (HttpStatus.INTERNAL_SERVER_ERROR.equals(status)) {
+        if (HttpStatus.INTERNAL_SERVER_ERROR.equals(statusCode)) {
             request.setAttribute(WebUtils.ERROR_EXCEPTION_ATTRIBUTE, ex, WebRequest.SCOPE_REQUEST);
         }
-        ThingsboardErrorCode errorCode = statusToErrorCode(status);
-        return new ResponseEntity<>(ThingsboardErrorResponse.of(ex.getMessage(), errorCode, status), headers, status);
+        ThingsboardErrorCode errorCode = statusToErrorCode((HttpStatus) statusCode);
+        return new ResponseEntity<>(ThingsboardErrorResponse.of(ex.getMessage(), errorCode, (HttpStatus) statusCode), headers, statusCode);
     }
 
     private void handleThingsboardException(ThingsboardException thingsboardException, HttpServletResponse response) throws IOException {
@@ -180,6 +186,13 @@ public class ThingsboardErrorResponseHandler extends ResponseEntityExceptionHand
         JacksonUtil.writeValue(response.getWriter(),
                 ThingsboardErrorResponse.of(message,
                         ThingsboardErrorCode.TOO_MANY_REQUESTS, HttpStatus.TOO_MANY_REQUESTS));
+    }
+
+    private void handleMaxPayloadSizeExceededException(HttpServletResponse response, MaxPayloadSizeExceededException exception) throws IOException {
+        response.setStatus(HttpStatus.PAYLOAD_TOO_LARGE.value());
+        JacksonUtil.writeValue(response.getWriter(),
+                ThingsboardErrorResponse.of(exception.getMessage(),
+                        ThingsboardErrorCode.BAD_REQUEST_PARAMS, HttpStatus.PAYLOAD_TOO_LARGE));
     }
 
     private void handleSubscriptionException(ThingsboardException subscriptionException, HttpServletResponse response) throws IOException {

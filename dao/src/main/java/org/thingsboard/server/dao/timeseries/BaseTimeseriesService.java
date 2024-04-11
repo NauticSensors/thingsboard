@@ -135,17 +135,6 @@ public class BaseTimeseriesService implements TimeseriesService {
     }
 
     @Override
-    public List<TsKvEntry> findLatestSync(TenantId tenantId, EntityId entityId, Collection<String> keys) {
-        validate(entityId);
-        List<TsKvEntry> latestEntries = new ArrayList<>(keys.size());
-        keys.forEach(key -> Validator.validateString(key, k -> "Incorrect key " + k));
-        for (String key : keys) {
-            latestEntries.add(timeseriesLatestDao.findLatestSync(tenantId, entityId, key));
-        }
-        return latestEntries;
-    }
-
-    @Override
     public ListenableFuture<List<TsKvEntry>> findAllLatest(TenantId tenantId, EntityId entityId) {
         validate(entityId);
         return timeseriesLatestDao.findAllLatest(tenantId, entityId);
@@ -198,8 +187,8 @@ public class BaseTimeseriesService implements TimeseriesService {
     }
 
     @Override
-    public ListenableFuture<List<Void>> saveLatest(TenantId tenantId, EntityId entityId, List<TsKvEntry> tsKvEntries) {
-        List<ListenableFuture<Void>> futures = new ArrayList<>(tsKvEntries.size());
+    public ListenableFuture<List<Long>> saveLatest(TenantId tenantId, EntityId entityId, List<TsKvEntry> tsKvEntries) {
+        List<ListenableFuture<Long>> futures = new ArrayList<>(tsKvEntries.size());
         for (TsKvEntry tsKvEntry : tsKvEntries) {
             futures.add(timeseriesLatestDao.saveLatest(tenantId, entityId, tsKvEntry));
         }
