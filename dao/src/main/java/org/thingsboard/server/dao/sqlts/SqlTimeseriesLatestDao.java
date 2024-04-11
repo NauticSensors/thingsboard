@@ -19,6 +19,8 @@ import com.google.common.collect.Lists;
 import com.google.common.util.concurrent.Futures;
 import com.google.common.util.concurrent.ListenableFuture;
 import com.google.common.util.concurrent.MoreExecutors;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -37,6 +39,7 @@ import org.thingsboard.server.common.data.kv.TsKvEntry;
 import org.thingsboard.server.common.data.kv.TsKvLatestRemovingResult;
 import org.thingsboard.server.common.stats.StatsFactory;
 import org.thingsboard.server.dao.DaoUtil;
+import org.thingsboard.server.dao.dictionary.KeyDictionaryDao;
 import org.thingsboard.server.dao.model.sql.AbstractTsKvEntity;
 import org.thingsboard.server.dao.model.sqlts.latest.TsKvLatestCompositeKey;
 import org.thingsboard.server.dao.model.sqlts.latest.TsKvLatestEntity;
@@ -49,8 +52,6 @@ import org.thingsboard.server.dao.sqlts.latest.TsKvLatestRepository;
 import org.thingsboard.server.dao.timeseries.TimeseriesLatestDao;
 import org.thingsboard.server.dao.util.SqlTsLatestAnyDao;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -102,6 +103,9 @@ public class SqlTimeseriesLatestDao extends BaseAbstractSqlTimeseriesDao impleme
 
     @Autowired
     private StatsFactory statsFactory;
+
+    @Autowired
+    private KeyDictionaryDao keyDictionaryDao;
 
     @PostConstruct
     protected void init() {
@@ -160,11 +164,6 @@ public class SqlTimeseriesLatestDao extends BaseAbstractSqlTimeseriesDao impleme
     }
 
     @Override
-    public TsKvEntry findLatestSync(TenantId tenantId, EntityId entityId, String key) {
-        return getLatestTsKvEntry(entityId, key);
-    }
-
-    @Override
     public ListenableFuture<List<TsKvEntry>> findAllLatest(TenantId tenantId, EntityId entityId) {
         return getFindAllLatestFuture(entityId);
     }
@@ -205,11 +204,11 @@ public class SqlTimeseriesLatestDao extends BaseAbstractSqlTimeseriesDao impleme
                 ReadTsKvQueryResult::getData, MoreExecutors.directExecutor());
     }
 
-   protected TsKvEntry doFindLatest(EntityId entityId, String key) {
+    protected TsKvEntry doFindLatest(EntityId entityId, String key) {
         TsKvLatestCompositeKey compositeKey =
                 new TsKvLatestCompositeKey(
                         entityId.getId(),
-                        getOrSaveKeyId(key));
+                        keyDictionaryDao.getOrSaveKeyId(key));
         Optional<TsKvLatestEntity> entry = tsKvLatestRepository.findById(compositeKey);
         if (entry.isPresent()) {
             TsKvLatestEntity tsKvLatestEntity = entry.get();
@@ -231,7 +230,7 @@ public class SqlTimeseriesLatestDao extends BaseAbstractSqlTimeseriesDao impleme
             if (ts >= query.getStartTs() && ts < query.getEndTs()) {
                 TsKvLatestEntity latestEntity = new TsKvLatestEntity();
                 latestEntity.setEntityId(entityId.getId());
-                latestEntity.setKey(getOrSaveKeyId(query.getKey()));
+                latestEntity.setKey(keyDictionaryDao.getOrSaveKeyId(query.getKey()));
                 tsKvLatestRepository.delete(latestEntity);
                 isRemoved = true;
                 if (query.getRewriteLatestIfDeleted()) {
@@ -252,7 +251,7 @@ public class SqlTimeseriesLatestDao extends BaseAbstractSqlTimeseriesDao impleme
         TsKvLatestEntity latestEntity = new TsKvLatestEntity();
         latestEntity.setEntityId(entityId.getId());
         latestEntity.setTs(tsKvEntry.getTs());
-        latestEntity.setKey(getOrSaveKeyId(tsKvEntry.getKey()));
+        latestEntity.setKey(keyDictionaryDao.getOrSaveKeyId(tsKvEntry.getKey()));
         latestEntity.setStrValue(tsKvEntry.getStrValue().orElse(null));
         latestEntity.setDoubleValue(tsKvEntry.getDoubleValue().orElse(null));
         latestEntity.setLongValue(tsKvEntry.getLongValue().orElse(null));

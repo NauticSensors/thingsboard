@@ -1,6 +1,6 @@
 {
   "name": "thingsboard",
-  "version": "3.6.4",
+  "version": "3.7.0",
   "scripts": {
     "ng": "ng",
     "start": "node --max_old_space_size=8048 ./node_modules/@angular/cli/bin/ng serve --configuration development --host 0.0.0.0 --open",
@@ -43,7 +43,6 @@
     "@ngrx/store": "^15.4.0",
     "@ngrx/store-devtools": "^15.4.0",
     "@ngx-translate/core": "^14.0.0",
-    "@ngx-translate/http-loader": "^7.0.0",
     "@svgdotjs/svg.filter.js": "^3.0.8",
     "@svgdotjs/svg.js": "^3.2.0",
     "@tinymce/tinymce-angular": "^7.0.0",
@@ -55,7 +54,7 @@
     "core-js": "^3.29.1",
     "date-fns": "2.0.0-alpha.27",
     "dayjs": "1.11.4",
-    "echarts": "^5.5.0",
+    "echarts": "https://github.com/thingsboard/echarts/archive/5.5.0-TB.tar.gz",
     "flot": "https://github.com/thingsboard/flot.git#0.9-work",
     "flot.curvedlines": "https://github.com/MichaelZinsmaier/CurvedLines.git#master",
     "font-awesome": "^4.7.0",

@@ -27,8 +27,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Component;
 import org.thingsboard.common.util.ThingsBoardThreadFactory;
 
-import javax.annotation.PostConstruct;
-import javax.annotation.PreDestroy;
+import jakarta.annotation.PostConstruct;
+import jakarta.annotation.PreDestroy;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.UnknownHostException;
@@ -81,16 +81,6 @@ public class DefaultCoapServerService implements CoapServerService {
     @Override
     public ConcurrentMap<InetSocketAddress, TbCoapDtlsSessionInfo> getDtlsSessionsMap() {
         return tbDtlsCertificateVerifier != null ? tbDtlsCertificateVerifier.getTbCoapDtlsSessionsMap() : null;
-    }
-
-    @Override
-    public long getTimeout() {
-        return coapServerContext.getTimeout();
-    }
-
-    @Override
-    public long getPiggybackTimeout() {
-        return coapServerContext.getPiggybackTimeout();
     }
 
     private CoapServer createCoapServer() throws UnknownHostException {
