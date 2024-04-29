@@ -40,22 +40,33 @@ $tb-mat-indigo: (
     50: rgba(black, 0.87),
     100: rgba(black, 0.87),
     200: rgba(black, 0.87),
-    300: white,
-    400: white,
-    500: white,
-    600: white,
-    700: white,
-    800: white,
-    900: white,
+    // 300: white,
+    300: #171717,
+    // 400: white,
+    400: #171717,
+    // 500: white,
+    500: #171717,
+    // 600: white,
+    600: #171717,
+    // 700: white,
+    700: #171717,
+    // 800: white,
+    800: #171717,
+    // 900: white,
+    900: #171717,
     A100: rgba(black, 0.87),
-    A200: white,
-    A400: white,
-    A700: white,
+    // A200: white,
+    A200: #171717,
+    // A400: white,
+    A400: #171717,
+    // A700: white,
+    A700: #171717,
   )
 );
 
 $tb-primary: mat.define-palette($tb-mat-indigo);
-$tb-accent: mat.define-palette(mat.$deep-orange-palette);
+// $tb-accent: mat.define-palette(mat.$deep-orange-palette);
+$tb-accent: mat.define-palette(mat.$indigo-palette);
 
 $background: (background: map_get(mat.$grey-palette, 200));
 
