@@ -15,8 +15,7 @@
     limitations under the License.
 
 -->
-<!-- <div class="tb-login-content mat-app-background tb-dark" fxFlex fxLayoutAlign="center center"> -->
-<div class="tb-login-content mat-app-background" fxFlex fxLayoutAlign="center center">
+<div class="tb-login-content mat-app-background tb-dark" fxFlex fxLayoutAlign="center center">
   <mat-card appearance="raised" style="max-height: 80vh; overflow-y: auto;">
     <mat-card-content>
       <form class="tb-login-form" [formGroup]="loginFormGroup" (ngSubmit)="login()">
@@ -62,8 +61,7 @@
               </button>
             </div>
             <div fxLayout="column" class="tb-action-button">
-              <!-- <button mat-raised-button color="accent" [disabled]="(isLoading$ | async)" -->
-              <button mat-raised-button color="primary" [disabled]="(isLoading$ | async)"
+              <button mat-raised-button color="accent" [disabled]="(isLoading$ | async)"
                       type="submit">{{ 'login.login' | translate }}</button>
             </div>
           </div>
