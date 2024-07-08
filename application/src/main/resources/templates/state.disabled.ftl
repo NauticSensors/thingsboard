@@ -22,7 +22,7 @@
 <head>
     <meta name="viewport" content="width=device-width"/>
     <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
-    <title>Thingsboard - Api Usage State</title>
+    <title>NauticSensors - Api Usage State</title>
 
 
     <style type="text/css">
@@ -110,7 +110,7 @@
             <table style="box-sizing: border-box; border: 1px solid #e9e9e9; border-radius: 3px; margin: 0px; height: 367px; background-color: #ffffff; width: 600px; max-width: 600px !important;" width="600" cellspacing="0" cellpadding="0">
                 <tbody>
                 <tr style="font-family: 'Helvetica Neue',Helvetica,Arial,sans-serif; box-sizing: border-box; font-size: 14px; margin: 0;">
-                    <td class="content-block" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #348eda; box-sizing: border-box; font-size: 14px; vertical-align: top; margin: 0px; padding: 0px; height: 110px;" valign="top"><img src="https://media.thingsboard.io/email/head.png" alt="" width="598" height="91" /></td>
+                    <td class="content-block" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #1d3545; box-sizing: border-box; font-size: 14px; vertical-align: top; margin: 0px; padding: 0px; height: 110px;" valign="top"><img src="https://media.thingsboard.io/email/head.png" alt="" width="598" height="91" /></td>
                 </tr>
                 <tr style="font-family: 'Helvetica Neue',Helvetica,Arial,sans-serif; box-sizing: border-box; font-size: 16px; margin: 0;">
                     <td class="content-block" style="font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #000000; box-sizing: border-box; font-size: 16px; margin: 0px; padding: 0px 32px; height: 66px; vertical-align: middle;" valign="middle">Your ThingsBoard account feature was <strong>disabled</strong></td>
