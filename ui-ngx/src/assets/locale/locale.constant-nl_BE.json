@@ -174,7 +174,7 @@
             "security-settings": "JWT-beveiligingsinstellingen",
             "signings-key": "Sleutel ondertekenen",
             "signings-key-base64": "De ondertekeningssleutel moet de base64-indeling hebben.",
-            "signings-key-hint": "Base64-gecodeerde tekenreeks die ten minste 512 bits aan gegevens vertegenwoordigt.",
+            "signings-key-hint": "Base64-gecodeerde string die ten minste 512 bits aan gegevens vertegenwoordigt.",
             "signings-key-min-length": "De ondertekeningssleutel moet ten minste 512 bits aan gegevens bevatten.",
             "signings-key-required": "Ondertekeningssleutel is vereist."
         },
@@ -1358,7 +1358,7 @@
             "client-public-key-tooltip": "De openbare sleutel X509 moet in DER-gecodeerd X509v3-formaat zijn en uitsluitend het EC-algoritme ondersteunen en vervolgens worden gecodeerd naar het Base64-formaat!",
             "client-publicKey-or-id": "Openbare sleutel of id van de client",
             "client-publicKey-or-id-required": "De openbare sleutel of id van de client is vereist.",
-            "client-publicKey-or-id-tooltip-psk": "De PSK-identifier is een willekeurige PSK-identifier van maximaal 128 bytes, zoals beschreven in de standaard [RFC7925].\nDe PSK-id MOET eerst worden geconverteerd naar een tekenreeks en vervolgens worden gecodeerd in octetten met behulp van UTF-8.",
+            "client-publicKey-or-id-tooltip-psk": "De PSK-identifier is een willekeurige PSK-identifier van maximaal 128 bytes, zoals beschreven in de standaard [RFC7925].\nDe PSK-id MOET eerst worden geconverteerd naar een string en vervolgens worden gecodeerd in octetten met behulp van UTF-8.",
             "client-publicKey-or-id-tooltip-rpk": "RPK openbare sleutel of id moet in de standaard [RFC7250] en gecodeerd zijn naar Base64-indeling!",
             "client-publicKey-or-id-tooltip-x509": "De openbare X509-sleutel moet in DER-gecodeerd X509v3-formaat zijn en uitsluitend het EC-algoritme ondersteunen en vervolgens worden gecodeerd in Base64-indeling",
             "client-secret-key": "Geheime sleutel van de client",
@@ -1371,7 +1371,7 @@
             "endpoint-required": "De naam van de endpoint is vereist.",
             "identity": "Identiteit van de klant",
             "identity-required": "Clientidentiteit is vereist.",
-            "identity-tooltip": "De PSK-identifier is een willekeurige PSK-identifier van maximaal 128 bytes, zoals beschreven in de standaard [RFC7925].\nDe PSK-id MOET eerst worden geconverteerd naar een tekenreeks en vervolgens worden gecodeerd in octetten met behulp van UTF-8.",
+            "identity-tooltip": "De PSK-identifier is een willekeurige PSK-identifier van maximaal 128 bytes, zoals beschreven in de standaard [RFC7925].\nDe PSK-id MOET eerst worden geconverteerd naar een string en vervolgens worden gecodeerd in octetten met behulp van UTF-8.",
             "lwm2m-server": "LwM2M-server",
             "mode": "Beveiligingsconfiguratiemodus"
         },
@@ -1722,7 +1722,7 @@
         "psm-activity-timer-pattern": "PSM-activiteitstimer moet een positief geheel getal zijn.",
         "psm-activity-timer-required": "PSM-activiteitstimer is vereist.",
         "rpc-request-proto-schema": "RPC-aanvraag proto-schema",
-        "rpc-request-proto-schema-hint": "RPC-aanvraagbericht moet altijd velden bevatten: tekenreeksmethode = 1; int32 requestId = 2; en params = 3 van elk gegevenstype.",
+        "rpc-request-proto-schema-hint": "RPC-aanvraagbericht moet altijd velden bevatten: stringmethode = 1; int32 requestId = 2; en params = 3 van elk gegevenstype.",
         "rpc-request-proto-schema-required": "RPC-aanvraag proto-schema is vereist.",
         "rpc-response-proto-schema": "RPC-respons proto-schema",
         "rpc-response-proto-schema-required": "RPC-respons proto-schema is vereist.",
@@ -1764,8 +1764,8 @@
             "authentication-protocol": "Authenticatie protocol",
             "authentication-protocol-required": "Verificatieprotocol is vereist.",
             "communication-configs": "Communicatie configs",
-            "community": "Tekenreeks van de gemeenschap",
-            "community-required": "Community-tekenreeks is vereist.",
+            "community": "String van de community",
+            "community-required": "Community-string is vereist.",
             "context-name": "Naam van de context",
             "data-key": "Gegevenssleutel",
             "data-key-required": "Gegevenssleutel is vereist.",
@@ -2546,7 +2546,7 @@
             "boolean": "Booleaans",
             "date-time": "Datum/tijd",
             "numeric": "Numeriek",
-            "string": "Snaar",
+            "string": "String",
             "value-type": "Soort waarde"
         },
         "value-type-required": "Het type sleutelwaarde is vereist."
@@ -4878,7 +4878,7 @@
             "datakey-value-type-integer": "Geheel getal",
             "datakey-value-type-json": "JSON",
             "datakey-value-type-select": "Selecteren",
-            "datakey-value-type-string": "Snaar",
+            "datakey-value-type-string": "String",
             "datakey-value-type-time": "Tijd",
             "date": "Datum",
             "datetime-field-settings": "Instellingen voor datum-/tijdvelden",
@@ -5014,7 +5014,7 @@
             "widget-mode-update-timeseries": "Timeseries bijwerken",
             "widget-title": "Titel van de widget"
         },
-        "invalid-qr-code-text": "Ongeldige invoertekst voor QR-code. Invoer moet een tekenreekstype hebben",
+        "invalid-qr-code-text": "Ongeldige invoertekst voor QR-code. Invoer moet een stringtype hebben",
         "label-widget": {
             "add-label": "Label toevoegen",
             "background-color": "Achtergrondkleur",
