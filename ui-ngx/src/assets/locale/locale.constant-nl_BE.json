@@ -526,7 +526,7 @@
         "selected-alarms": "{ count, plural, =1 {1 alarm} other {# alarms} } geselecteerd",
         "selected-alarms-are-acknowledged": "Geselecteerde alarmen zijn al erkend",
         "selected-alarms-are-cleared": "Geselecteerde alarmen zijn al gewist",
-        "severity": "Strengheid",
+        "severity": "Ernst",
         "severity-critical": "Kritisch",
         "severity-indeterminate": "Onbepaalde",
         "severity-major": "Majoor",
