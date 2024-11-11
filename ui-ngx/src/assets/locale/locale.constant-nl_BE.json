@@ -3833,7 +3833,7 @@
         "advanced": "Geavanceerd",
         "custom": "Aangepast",
         "days": "Dagen",
-        "days-interval": "{ days, plural, =1 {1 day} andere {# days} }",
+        "days-interval": "{ days, plural, =1 {1 day} other {# days} }",
         "hours": "Uren",
         "hours-interval": "{ hours, plural, =1 {1 hour} other {# hours} }",
         "minutes": "Minuten",
@@ -3938,7 +3938,7 @@
         "timewindow-settings": "Tijdvensterinstellingen",
         "weeks": "{ weeks, plural, =1 { week } other {# weeks } }",
         "weeks-short": "{{ weeks }}w",
-        "years": "{ years, plural, =1 { year } andere {# years } }",
+        "years": "{ years, plural, =1 { year } other {# years } }",
         "years-short": "{{ years }}j"
     },
     "timezone": {
