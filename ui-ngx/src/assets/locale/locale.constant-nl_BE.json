@@ -657,12 +657,12 @@
         "telemetry-persistence-daily-activity": "Dagelijkse activiteit met behoud van telemetrie",
         "telemetry-persistence-hourly-activity": "Telemetriepersistentie activiteit per uur",
         "telemetry-persistence-monthly-activity": "Maandelijkse activiteit voor telemetriepersistentie",
-        "transport": "Vervoer",
-        "transport-daily-activity": "Vervoer dagelijkse activiteit",
+        "transport": "Transport",
+        "transport-daily-activity": "Transport dagelijkse activiteit",
         "transport-data-points": "Datapunten voor transport",
-        "transport-hourly-activity": "Vervoer per uur",
-        "transport-messages": "Berichten vervoeren",
-        "transport-monthly-activity": "Maandelijkse activiteit Transport",
+        "transport-hourly-activity": "Transport per uur",
+        "transport-messages": "Berichten transporteren",
+        "transport-monthly-activity": "Maandelijkse activiteit transport",
         "view-details": "Bekijk details",
         "view-statistics": "Statistieken bekijken"
     },
@@ -1819,7 +1819,7 @@
         "transport-configuration": "Configuratie van het transport",
         "transport-device-payload-type-json": "JSON",
         "transport-device-payload-type-proto": "Protobuf",
-        "transport-type": "Soort vervoer",
+        "transport-type": "Soort transport",
         "transport-type-coap": "CoAP",
         "transport-type-coap-hint": "Maakt geavanceerde CoAP-transportinstellingen mogelijk",
         "transport-type-default": "Standaard",
@@ -2390,7 +2390,7 @@
         "modbus-tag": "Label",
         "modbus-tcp-reconnect": "Automatisch opnieuw verbinding maken",
         "modbus-timeseries-poll-period": "Tijdreeks-enquêteperiode (ms)",
-        "modbus-transport": "Vervoer",
+        "modbus-transport": "Transport",
         "modbus-unit-id": "Eenheid-ID",
         "modbus-unit-id-range": "De eenheids-ID moet tussen 1 en 247 liggen.",
         "no-file": "Geen bestand geselecteerd.",
@@ -3784,9 +3784,9 @@
             "transport-device-msg": "Berichten over transportmiddelen",
             "transport-device-telemetry-data-points": "Telemetriegegevenspunten voor transport devices",
             "transport-device-telemetry-msg": "Telemetrieberichten van transport devices",
-            "transport-tenant-msg": "Berichten van tenants vervoeren",
-            "transport-tenant-telemetry-data-points": "Telemetriege gevenspunten voor transport tenants",
-            "transport-tenant-telemetry-msg": "Telemetrieberichten van tenants vervoeren"
+            "transport-tenant-msg": "Berichten van tenants transporteren",
+            "transport-tenant-telemetry-data-points": "Telemetrie gevenspunten voor transport tenants",
+            "transport-tenant-telemetry-msg": "Telemetrieberichten van tenants transporteren"
         },
         "rest-requests-for-tenant": "REST-aanvragen voor tenant",
         "rpc-ttl-days": "RPC TTL-dagen",
@@ -3815,7 +3815,7 @@
         "transport-device-telemetry-data-points-rate-limit": "Telemetrie gegevenspunten voor transport devices",
         "transport-device-telemetry-msg-rate-limit": "Telemetrieberichten van transport devices",
         "transport-tenant-telemetry-data-points-rate-limit": "Telemetrie gegevenspunten voor transporttenants",
-        "transport-tenant-telemetry-msg-rate-limit": "Telemetrieberichten van tenants vervoeren",
+        "transport-tenant-telemetry-msg-rate-limit": "Telemetrieberichten van tenants transporteren",
         "unlimited": "(0 - onbeperkt)",
         "ws-limit-max-sessions-per-customer": "Maximaal aantal sessies per klant",
         "ws-limit-max-sessions-per-public-user": "Maximaal aantal sessies per openbare gebruiker",
@@ -5474,7 +5474,7 @@
         "time-series-chart": {},
         "transport-messages": {
             "info": "Alle berichten die afkomstig zijn van Devices",
-            "title": "Berichten vervoeren"
+            "title": "Berichten transporteren"
         },
         "usage-info": {
             "api-calls": "API-aanroepen",
