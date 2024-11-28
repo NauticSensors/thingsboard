@@ -928,9 +928,12 @@
             "node-selected": "Op knooppunt geselecteerd",
             "pie-slice-click": "Klik op slice",
             "polygon-click": "Klik op polygoon",
-            "row-click": "Klik op rij",
-            "row-double-click": "Dubbelklik op de rij",
-            "tooltip-tag-action": "Actie voor tooltip-tag"
+            "row-click": "Klik op regel",
+            "row-double-click": "Dubbelklik op de regel",
+            "cell-double-click": "Dubbelklik op de cel",
+            "tooltip-tag-action": "Actie voor tooltip-tag",
+            "card-click": "Klik op de kaart",
+            "click": "Bij een klik"
         }
     },
     "customer": {
@@ -1070,7 +1073,7 @@
         "invalid-aliases-config": "Kan geen devices vinden die overeenkomen met sommige aliassenfilter.<br/>Neem contact op met uw beheerder om dit probleem op te lossen.",
         "invalid-dashboard-file-error": "Dashboard kan niet worden geïmporteerd: Ongeldige gegevensstructuur van het dashboard.",
         "invalid-widget-file-error": "Widget kan niet worden geïmporteerd: Ongeldige gegevensstructuur van de widget.",
-        "is-root-state": "Wortel staat",
+        "is-root-state": "Hoofdstatus",
         "make-private": "Dashboard privé maken",
         "make-private-dashboard": "Dashboard privé maken",
         "make-private-dashboard-text": "Na de bevestiging wordt het dashboard privé gemaakt en is het niet toegankelijk voor anderen.",
@@ -1129,8 +1132,8 @@
         "socialshare-text": "'{{dashboardTitle}}' mogelijk gemaakt door ThingsBoard",
         "socialshare-title": "'{{dashboardTitle}}' mogelijk gemaakt door ThingsBoard",
         "state": "Status van het dashboard",
-        "state-controller": "Controle van de staat",
-        "state-id": "Staats-ID",
+        "state-controller": "Controller van de staat",
+        "state-id": "Staat-id",
         "state-id-exists": "De status van het dashboard met dezelfde id bestaat al.",
         "state-id-required": "Status-id van het dashboard is vereist.",
         "state-name": "Naam",
@@ -3396,7 +3399,7 @@
         "description": "Omschrijving",
         "details": "Details",
         "edge-rulechain": "Edge rule chain",
-        "edge-template-root": "Sjabloon Wortel",
+        "edge-template-root": "Hoofdsjabloon",
         "events": "Events",
         "export": "Rule chain exporteren",
         "export-failed-error": "Rule chain kan niet worden geëxporteerd: {{error}}",
@@ -5514,6 +5517,12 @@
             "relative-font-size": "Relatieve lettergrootte (procenten)",
             "shadow-color": "De kleur van de schaduw",
             "size": "Grootte"
+        },
+        "yolo-card": {
+            "door-open": "Open",
+            "door-closed": "Ok",
+            "water-present": "Water",
+            "water-absent": "Ok"
         }
     },
     "widgets-bundle": {
