@@ -53,7 +53,7 @@ export class HomeComponent extends PageComponent implements AfterViewInit, OnIni
   sidenavOpened = true;
 
   // logo = 'assets/logo_title_white.svg';
-  logo = 'assets/nautic-logo-no-bg.svg';
+  logo = 'assets/bluestar-logo-no-bg.svg';
 
   @ViewChild('sidenav')
   sidenav: MatSidenav;
