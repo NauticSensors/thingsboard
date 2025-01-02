@@ -24,7 +24,7 @@ import { Component } from '@angular/core';
 export class LogoComponent {
 
   // logo = 'assets/logo_title_white.svg';
-  logo = 'assets/nautic-logo-no-bg.svg';
+  logo = 'assets/bluestar-logo-no-bg.svg';
 
   gotoThingsboard(): void {
     window.open('https://thingsboard.io', '_blank');

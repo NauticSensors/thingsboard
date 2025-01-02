@@ -30,8 +30,11 @@ echo "HELP: example ./build.sh msa/web-ui,msa/web-report"
 java -version
 #echo "Cleaning ui-ngx/node_modules" && rm -rf ui-ngx/node_modules
 
-MAVEN_OPTS="-Xmx1024m" NODE_OPTIONS="--max_old_space_size=4096" DOCKER_CLI_EXPERIMENTAL=enabled DOCKER_BUILDKIT=0 \
-mvn -T2 license:format clean install -DskipTests \
+# MAVEN_OPTS="-Xmx1024m" NODE_OPTIONS="--max_old_space_size=4096" DOCKER_CLI_EXPERIMENTAL=enabled DOCKER_BUILDKIT=0 \
+# mvn -T2 license:format clean install -DskipTests \
+#   $PROJECTS --also-make
+DOCKER_CLI_EXPERIMENTAL=enabled DOCKER_BUILDKIT=0 \
+  mvn -T0.8C license:format clean install -DskipTests -Ddockerfile.skip=false \
   $PROJECTS --also-make
 #   \
 #  -Dpush-docker-amd-arm-images

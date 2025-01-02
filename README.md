@@ -52,14 +52,32 @@ mvn -T 0.8C license:format clean install -DskipTests -Ddockerfile.skip=false
 mvn -T 0.8C license:format clean install -DskipTests -Ddockerfile.skip=false -pl :web-ui -am
 ```
 
+or simply
+
+```bash
+./build.sh msa/web-ui
+```
+
 ## How to build tb-web-ui and tb-node only
 
 ```bash
 mvn -e -T 0.8C license:format install -DskipTests -Ddockerfile.skip=false -pl :web-ui,:tb-node
 ```
 
+or simply
+
+```bash
+./build.sh msa/web-ui,msa/tb-node
+```
+
 ## How to build tb-web-ui, tb-node, and tb-progres only
 
 ```bash
 mvn -e -T 0.8C license:format install -DskipTests -Ddockerfile.skip=false -pl org.thingsboard.msa:web-ui,org.thingsboard.msa:tb-node,org.thingsboard.msa:tb
+```
+
+or simply
+
+```bash
+./build.sh msa/web-ui,msa/tb-node,msa/tb
 ```

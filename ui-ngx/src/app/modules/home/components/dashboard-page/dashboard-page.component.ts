@@ -273,7 +273,7 @@ export class DashboardPageComponent extends PageComponent implements IDashboardC
 
   private dashboardLogoCache: SafeUrl;
   // private defaultDashboardLogo = 'assets/logo_title_white.svg';
-  private defaultDashboardLogo = 'assets/nautic-logo-no-bg.svg';
+  private defaultDashboardLogo = 'assets/bluestar-logo-no-bg.svg';
 
   private dashboardResize$: ResizeObserver;
 
