@@ -31,6 +31,7 @@ import org.thingsboard.server.common.data.alarm.AlarmApiCallResult;
 import org.thingsboard.server.common.data.alarm.AlarmCreateOrUpdateActiveRequest;
 import org.thingsboard.server.common.data.alarm.AlarmSeverity;
 import org.thingsboard.server.common.data.alarm.AlarmUpdateRequest;
+import org.thingsboard.server.common.data.device.profile.AlarmConditionFilterKey;
 import org.thingsboard.server.common.data.device.profile.AlarmConditionKeyType;
 import org.thingsboard.server.common.data.device.profile.AlarmConditionSpecType;
 import org.thingsboard.server.common.data.device.profile.DeviceProfileAlarm;
@@ -285,6 +286,8 @@ class AlarmState {
                         alarmDetailsStr = alarmDetailsStr.replaceAll(String.format("\\$\\{%s}", keyFilter.getKey().getKey()), getValueAsString(entityKeyValue));
                     }
                 }
+                // Also resolve ${ss:attributeName} patterns for server-scope attributes
+                alarmDetailsStr = resolveAttributePatterns(alarmDetailsStr);
                 newDetails.put("data", alarmDetailsStr);
             }
             if (dashboardId != null) {
@@ -298,6 +301,26 @@ class AlarmState {
         }
 
         return alarmDetails;
+    }
+
+    private String resolveAttributePatterns(String alarmDetailsStr) {
+        // Pattern: ${ss:attributeName} for server-scope attributes
+        java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{ss:([^}]+)\\}");
+        java.util.regex.Matcher matcher = pattern.matcher(alarmDetailsStr);
+        StringBuffer result = new StringBuffer();
+        while (matcher.find()) {
+            String attributeName = matcher.group(1);
+            AlarmConditionFilterKey key = new AlarmConditionFilterKey(AlarmConditionKeyType.ATTRIBUTE, attributeName);
+            EntityKeyValue entityKeyValue = dataSnapshot.getValue(key);
+            if (entityKeyValue != null) {
+                matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(getValueAsString(entityKeyValue)));
+            } else {
+                // Keep the original pattern if attribute not found
+                matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(matcher.group(0)));
+            }
+        }
+        matcher.appendTail(result);
+        return result.toString();
     }
 
     private static String getValueAsString(EntityKeyValue entityKeyValue) {
