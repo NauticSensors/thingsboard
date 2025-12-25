@@ -106,12 +106,14 @@ public class AlarmTriggerProcessor implements NotificationRuleTriggerProcessor<A
                         alarmUpdate.isDeleted() ? "deleted" : null)
                 .alarmOriginator(alarmInfo.getOriginator())
                 .alarmOriginatorName(alarmInfo.getOriginatorName())
+                .alarmOriginatorLabel(alarmInfo.getOriginatorLabel())
                 .alarmSeverity(alarmInfo.getSeverity())
                 .alarmStatus(alarmInfo.getStatus())
                 .acknowledged(alarmInfo.isAcknowledged())
                 .cleared(alarmInfo.isCleared())
                 .alarmCustomerId(alarmInfo.getCustomerId())
                 .dashboardId(alarmInfo.getDashboardId())
+                .alarmDetails(alarmInfo.getDetails())
                 .build();
     }
 

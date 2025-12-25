@@ -15,6 +15,8 @@
  */
 package org.thingsboard.server.common.data.notification.info;
 
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -25,10 +27,10 @@ import org.thingsboard.server.common.data.id.CustomerId;
 import org.thingsboard.server.common.data.id.DashboardId;
 import org.thingsboard.server.common.data.id.EntityId;
 
+import java.util.HashMap;
+import java.util.Iterator;
 import java.util.Map;
 import java.util.UUID;
-
-import static org.thingsboard.server.common.data.util.CollectionsUtil.mapOf;
 
 @Data
 @NoArgsConstructor
@@ -41,25 +43,68 @@ public class AlarmNotificationInfo implements RuleOriginatedNotificationInfo {
     private UUID alarmId;
     private EntityId alarmOriginator;
     private String alarmOriginatorName;
+    private String alarmOriginatorLabel;
     private AlarmSeverity alarmSeverity;
     private AlarmStatus alarmStatus;
     private boolean acknowledged;
     private boolean cleared;
     private CustomerId alarmCustomerId;
     private DashboardId dashboardId;
+    private JsonNode alarmDetails;
 
     @Override
     public Map<String, String> getTemplateData() {
-        return mapOf(
-                "alarmType", alarmType,
-                "action", action,
-                "alarmId", alarmId.toString(),
-                "alarmSeverity", alarmSeverity.name().toLowerCase(),
-                "alarmStatus", alarmStatus.toString(),
-                "alarmOriginatorEntityType", alarmOriginator.getEntityType().getNormalName(),
-                "alarmOriginatorName", alarmOriginatorName,
-                "alarmOriginatorId", alarmOriginator.getId().toString()
-        );
+        Map<String, String> data = new HashMap<>();
+        data.put("alarmType", alarmType);
+        data.put("action", action);
+        data.put("alarmId", alarmId.toString());
+        data.put("alarmSeverity", alarmSeverity.name().toLowerCase());
+        data.put("alarmStatus", alarmStatus.toString());
+        data.put("alarmOriginatorEntityType", alarmOriginator.getEntityType().getNormalName());
+        data.put("alarmOriginatorName", alarmOriginatorName);
+        data.put("alarmOriginatorLabel", alarmOriginatorLabel != null ? alarmOriginatorLabel : alarmOriginatorName);
+        data.put("alarmOriginatorId", alarmOriginator.getId().toString());
+
+        // Add alarm details as template variables with "alarmDetails." prefix
+        if (alarmDetails != null) {
+            // Check if there's a "data" field containing the JSON string
+            JsonNode dataNode = alarmDetails.get("data");
+            if (dataNode != null && dataNode.isTextual()) {
+                try {
+                    ObjectMapper mapper = new ObjectMapper();
+                    JsonNode parsedData = mapper.readTree(dataNode.asText());
+                    addJsonNodeToTemplateData(data, "alarmDetails", parsedData);
+                } catch (Exception e) {
+                    // If parsing fails, use the raw data string
+                    data.put("alarmDetails.data", dataNode.asText());
+                }
+            } else {
+                addJsonNodeToTemplateData(data, "alarmDetails", alarmDetails);
+            }
+        }
+
+        return data;
+    }
+
+    private void addJsonNodeToTemplateData(Map<String, String> data, String prefix, JsonNode node) {
+        if (node == null || node.isNull()) {
+            return;
+        }
+        if (node.isObject()) {
+            Iterator<Map.Entry<String, JsonNode>> fields = node.fields();
+            while (fields.hasNext()) {
+                Map.Entry<String, JsonNode> field = fields.next();
+                String key = prefix + "." + field.getKey();
+                JsonNode value = field.getValue();
+                if (value.isValueNode()) {
+                    data.put(key, value.asText());
+                } else if (value.isObject()) {
+                    addJsonNodeToTemplateData(data, key, value);
+                }
+            }
+        } else if (node.isValueNode()) {
+            data.put(prefix, node.asText());
+        }
     }
 
     @Override
