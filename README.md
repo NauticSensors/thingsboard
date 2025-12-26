@@ -39,6 +39,41 @@ Collect and Visualize your IoT data in minutes by following this [guide](https:/
 
  - [Stackoverflow](http://stackoverflow.com/questions/tagged/thingsboard)
 
+## NauticSensors Customizations
+
+This fork includes the following custom patches for NauticSensors BlueStar:
+
+### 1. Alarm Notification Enhancements (`fd69e27599`)
+
+Added new template variables for alarm notifications:
+
+- `${alarmOriginatorLabel}` - The device label (falls back to device name if null)
+- `${alarmDetails.*}` - Access to alarm details fields (e.g., `${alarmDetails.measuredValue}`, `${alarmDetails.threshold}`)
+
+**Files modified:**
+- `application/.../AlarmTriggerProcessor.java` - Populates new fields from AlarmInfo
+- `common/data/.../AlarmNotificationInfo.java` - Added alarmOriginatorLabel and alarmDetails with JSON flattening
+
+### 2. Server Attribute Substitution in Alarm Details
+
+Added support for `${ss:attributeName}` pattern in alarm details, allowing dynamic threshold values from server-scope attributes to be included in alarm context.
+
+Previously, only telemetry values (`${key}`) could be substituted in alarm details. Now both patterns work:
+- `${key}` - Substitutes telemetry value
+- `${ss:attributeName}` - Substitutes server-scope attribute value
+
+**Attribute lookup hierarchy:**
+1. Device attributes (from dataSnapshot)
+2. Customer attributes (via `dynamicPredicateValueCtx.getCustomerValue()`)
+3. Tenant attributes (via `dynamicPredicateValueCtx.getTenantValue()`)
+
+This inheritance chain matches the behavior of dynamic alarm threshold values when `inherit: true` is configured in the device profile.
+
+**File modified:**
+- `rule-engine/.../AlarmState.java` - Added `resolveAttributePatterns()` method with device/customer/tenant fallback
+
+This addresses ThingsBoard limitation documented in [issue #4102](https://github.com/thingsboard/thingsboard/issues/4102).
+
 ## Licenses
 
 This project is released under [Apache 2.0 License](./LICENSE).
