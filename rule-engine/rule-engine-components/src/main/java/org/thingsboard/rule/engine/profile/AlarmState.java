@@ -306,6 +306,7 @@ class AlarmState {
 
     private String resolveAttributePatterns(String alarmDetailsStr) {
         // Pattern: ${ss:attributeName} for server-scope attributes
+        // Falls back to customer/tenant attributes if not found on device (similar to dynamicValue inherit behavior)
         java.util.regex.Pattern pattern = java.util.regex.Pattern.compile("\\$\\{ss:([^}]+)\\}");
         java.util.regex.Matcher matcher = pattern.matcher(alarmDetailsStr);
         StringBuffer result = new StringBuffer();
@@ -313,6 +314,14 @@ class AlarmState {
             String attributeName = matcher.group(1);
             AlarmConditionFilterKey key = new AlarmConditionFilterKey(AlarmConditionKeyType.ATTRIBUTE, attributeName);
             EntityKeyValue entityKeyValue = dataSnapshot.getValue(key);
+            // If not found on device, try customer attributes
+            if (entityKeyValue == null && dynamicPredicateValueCtx != null) {
+                entityKeyValue = dynamicPredicateValueCtx.getCustomerValue(attributeName);
+            }
+            // If still not found, try tenant attributes
+            if (entityKeyValue == null && dynamicPredicateValueCtx != null) {
+                entityKeyValue = dynamicPredicateValueCtx.getTenantValue(attributeName);
+            }
             if (entityKeyValue != null) {
                 matcher.appendReplacement(result, java.util.regex.Matcher.quoteReplacement(getValueAsString(entityKeyValue)));
             } else {
