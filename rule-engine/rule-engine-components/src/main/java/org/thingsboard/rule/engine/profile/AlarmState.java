@@ -289,7 +289,13 @@ class AlarmState {
                 }
                 // Also resolve ${ss:attributeName} patterns for server-scope attributes
                 alarmDetailsStr = resolveAttributePatterns(alarmDetailsStr);
-                newDetails.put("data", alarmDetailsStr);
+                // Parse alarm details as JSON object so fields are accessible as ${details.*} in notification templates
+                JsonNode parsedDetails = JacksonUtil.toJsonNode(alarmDetailsStr);
+                if (parsedDetails != null && parsedDetails.isObject()) {
+                    newDetails.setAll((ObjectNode) parsedDetails);
+                } else {
+                    newDetails.put("data", alarmDetailsStr);
+                }
             }
             if (dashboardId != null) {
                 newDetails.put("dashboardId", dashboardId.getId().toString());
