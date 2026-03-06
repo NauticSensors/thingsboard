@@ -8,13 +8,13 @@ Geforkte versie van ThingsBoard open-source IoT platform met NauticSensors-speci
 
 Zie [README.md](./README.md) voor uitgebreide documentatie van de alarm flow architectuur.
 
-## NauticSensors Customizations
+## NauticSensors Customizations (bluestar-4.3, gebaseerd op release-4.3)
 
-1. **Alarm Notification Enhancements** - Nieuwe template variables:
-   - `${alarmOriginatorLabel}` - Device label
-   - `${alarmDetails.*}` - Toegang tot alarm details
+1. **Alarm Notification Enhancements** - Nu native upstream in release-4.3:
+   - `${alarmOriginatorLabel}` - Device label (upstream)
+   - `${details.*}` - Toegang tot alarm details (upstream, was `${alarmDetails.*}` in bluestar-4.2)
 
-2. **Server Attribute Substitution** - `${ss:attributeName}` pattern in alarm details
+2. **Server Attribute Substitution** - `${ss:attributeName}` pattern in alarm details (custom, in AlarmState.java)
 
 ## Build Commands
 
