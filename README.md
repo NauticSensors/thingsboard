@@ -41,18 +41,16 @@ Collect and Visualize your IoT data in minutes by following this [guide](https:/
 
 ## NauticSensors Customizations
 
-This fork includes the following custom patches for NauticSensors BlueStar:
+This fork (bluestar-4.3, based on release-4.3) includes the following custom patches for NauticSensors BlueStar:
 
-### 1. Alarm Notification Enhancements (`fd69e27599`)
+### 1. Alarm Notification Enhancements (NOW UPSTREAM)
 
-Added new template variables for alarm notifications:
+As of release-4.3, the following features are available natively in ThingsBoard:
 
-- `${alarmOriginatorLabel}` - The device label (falls back to device name if null)
-- `${alarmDetails.*}` - Access to alarm details fields (e.g., `${alarmDetails.measuredValue}`, `${alarmDetails.threshold}`)
+- `${alarmOriginatorLabel}` - The device label
+- `${details.*}` - Access to alarm details fields (e.g., `${details.data}`, `${details.measuredValue}`)
 
-**Files modified:**
-- `application/.../AlarmTriggerProcessor.java` - Populates new fields from AlarmInfo
-- `common/data/.../AlarmNotificationInfo.java` - Added alarmOriginatorLabel and alarmDetails with JSON flattening
+**Note:** The template variable prefix changed from `${alarmDetails.*}` (bluestar-4.2) to `${details.*}` (release-4.3). Existing notification templates in the database must be updated accordingly.
 
 ### 2. Server Attribute Substitution in Alarm Details
 
