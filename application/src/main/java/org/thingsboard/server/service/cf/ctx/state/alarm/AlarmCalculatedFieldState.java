@@ -392,7 +392,13 @@ public class AlarmCalculatedFieldState extends BaseCalculatedFieldState {
                     ArgumentEntry value = entry.getValue();
                     alarmDetailsStr = alarmDetailsStr.replaceAll(String.format("\\$\\{%s}", key), String.valueOf(value.getValue()));
                 }
-                newDetails.put("data", alarmDetailsStr);
+                // Parse alarm details as JSON object so fields are accessible as ${details.*} in notification templates
+                JsonNode parsedDetails = JacksonUtil.toJsonNode(alarmDetailsStr);
+                if (parsedDetails != null && parsedDetails.isObject()) {
+                    newDetails.setAll((ObjectNode) parsedDetails);
+                } else {
+                    newDetails.put("data", alarmDetailsStr);
+                }
             }
             if (dashboardId != null) {
                 newDetails.put("dashboardId", dashboardId.getId().toString());
