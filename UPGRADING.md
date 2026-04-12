@@ -7,7 +7,10 @@ Dit document beschrijft hoe je de NauticSensors ThingsBoard-fork (`bluestar-4.3`
 NauticSensors onderhoud een fork van [thingsboard/thingsboard](https://github.com/thingsboard/thingsboard) met custom patches. Bij een nieuwe ThingsBoard release rebasen we onze patches op de nieuwe versie, bouwen we Docker images, en deployen we via Helm.
 
 **Belangrijk — upgrade-volgorde:**
-ThingsBoard releases bevatten database-migraties die sequentieel uitgevoerd moeten worden. Je kunt **geen versies overslaan**. Als er tussenliggende releases zijn (bijv. 4.3.0.1 → 4.3.1 → 4.3.1.1), moet elke versie doorlopen worden voor de DB-migraties. De tussenliggende stappen kunnen met officiële ThingsBoard Docker images (geen custom fork nodig). Alleen de laatste stap gebruikt onze custom fork.
+ThingsBoard releases bevatten database-migraties die sequentieel uitgevoerd moeten worden. Je kunt **geen versies overslaan**. Als er tussenliggende releases zijn (bijv. 4.2.x → 4.3.0 → 4.3.1), moet elke versie doorlopen worden voor de DB-migraties. De tussenliggende stappen kunnen met officiële ThingsBoard Docker images (geen custom fork nodig). Alleen de laatste stap gebruikt onze custom fork.
+
+**Uitzondering — patch releases binnen dezelfde minor:**
+Patch releases (bijv. 4.3.0.1 → 4.3.1 → 4.3.1.1) delen hetzelfde DB-schema. Hiervoor is **geen `UPGRADE_TB=true` nodig**. Je kunt direct de nieuwe image deployen zonder migratie-stap. De upgrade validator accepteert alleen cross-minor upgrades (bijv. 4.2.x → 4.3.x).
 
 ## Huidige setup
 
@@ -110,11 +113,23 @@ De versie wordt bepaald door upstream (bijv. `4.3.1.1`). Pas deze **niet** handm
 
 ### Bouwen
 
+**Vereist: Java 17** — Gradle 7.3.3 (gebruikt door de packaging modules) is niet compatible met Java 21+. Gebruik SDKMAN om te switchen:
+
 ```bash
-mvn -T 0.8C license:format clean install -DskipTests -Ddockerfile.skip=false
+sdk use java 17.0.13-tem
+```
+
+Bouw alleen de modules die we nodig hebben (`tb-node` en `web-ui`):
+
+```bash
+DOCKER_CLI_EXPERIMENTAL=enabled DOCKER_BUILDKIT=0 \
+  mvn -T0.8C license:format clean install -DskipTests -Ddockerfile.skip=false \
+  -pl msa/web-ui,msa/tb-node -am
 ```
 
 Dit bouwt Docker images lokaal als `thingsboard/tb-node:<versie>` en `thingsboard/tb-web-ui:<versie>`.
+
+> **Let op:** Een volledige build (`mvn ... clean install` zonder `-pl`) kan falen op `js-executor` en `monitoring` modules door Gradle-incompatibiliteit. Die modules gebruiken we niet (we draaien de officiële Docker Hub images ervoor).
 
 ### Docker images taggen en pushen
 
@@ -130,10 +145,12 @@ docker push registry.local.nauticsensors.com/bluestar/tb-web-ui:$VERSION
 
 ## Stap 3 — Database backup
 
-**Altijd** een database backup maken vóór de eerste DB-migratie:
+**Altijd** een database backup maken vóór de eerste DB-migratie.
+
+PostgreSQL draait extern (niet in k8s) op `192.168.1.241`:
 
 ```bash
-kubectl exec -n thingsboard <postgres-pod> -- pg_dump -U postgres thingsboard > backup_pre_upgrade.sql
+ssh simon@192.168.1.241 "PGPASSWORD=thingsboard pg_dump -h localhost -U thingsboard -d thingsboard_370 -F c -f /tmp/thingsboard_backup_pre_upgrade_\$(date +%Y%m%d_%H%M%S).dump"
 ```
 
 ## Stap 4 — Tussenliggende DB-migraties uitvoeren
@@ -188,14 +205,22 @@ node:
 
 ```bash
 cd homelab-infra/apps/helm/thingsboard/thingsboard-cluster
-helm upgrade thingsboard . -n thingsboard
+helm upgrade thingsboard . -n bluestar \
+  --set node.image.repository=thingsboard/tb-node \
+  --set node.image.tag=4.3.1 \
+  --set engine.image.repository=thingsboard/tb-node \
+  --set engine.image.tag=4.3.1 \
+  --set web.image.repository=thingsboard/tb-web-ui \
+  --set web.image.tag=4.3.1 \
+  --set global.tag=4.3.1 \
+  --reuse-values
 ```
 
 #### 4c. Migratie volgen
 
 ```bash
 # Volg de logs van de core pod
-kubectl logs -n thingsboard -l app=tb-core --tail=200 -f
+kubectl logs -n bluestar -l app=thingsboard-core --tail=200 -f
 ```
 
 Wacht tot je ziet dat de migratie succesvol is afgerond. De pod zal daarna stoppen (exit 0). Dit is verwacht.
@@ -212,7 +237,7 @@ Na succesvolle migratie **direct** `UPGRADE_TB` weer op `false` zetten om de res
 Opnieuw deployen:
 
 ```bash
-helm upgrade thingsboard . -n thingsboard
+helm upgrade thingsboard . -n bluestar --reuse-values
 ```
 
 Wacht tot de pods stabiel draaien voordat je doorgaat naar de volgende versie.
@@ -250,12 +275,23 @@ node:
 ### Deployen
 
 ```bash
-helm upgrade thingsboard . -n thingsboard
+cd homelab-infra/apps/helm/thingsboard/thingsboard-cluster
+helm upgrade thingsboard . -n bluestar \
+  --set node.image.repository=registry.local.nauticsensors.com/bluestar/tb-node \
+  --set node.image.tag=4.3.1.1 \
+  --set engine.image.repository=registry.local.nauticsensors.com/bluestar/tb-node \
+  --set engine.image.tag=4.3.1.1 \
+  --set web.image.repository=registry.local.nauticsensors.com/bluestar/tb-web-ui \
+  --set web.image.tag=4.3.1.1 \
+  --set global.tag=4.3.1.1 \
+  --reuse-values
 ```
 
 ### Migratie volgen en afronden
 
-Zelfde procedure als stap 4c/4d:
+Dit is alleen nodig bij **cross-minor upgrades** (bijv. 4.2.x → 4.3.x). Bij patch releases binnen dezelfde minor is geen migratie nodig en kun je deze stap overslaan.
+
+Bij cross-minor upgrades, zelfde procedure als stap 4c/4d:
 1. Volg logs, wacht op succesvolle migratie
 2. Pod stopt na migratie (verwacht)
 3. Zet `UPGRADE_TB` terug naar `false`
@@ -268,7 +304,7 @@ Zelfde procedure als stap 4c/4d:
 2. Test alarm flow (de custom `${ss:...}` substitutie) met een test-device
 3. Controleer logs op errors:
    ```bash
-   kubectl logs -n thingsboard -l app=tb-core --tail=100
+   kubectl logs -n bluestar -l app=thingsboard-core --tail=100
    ```
 
 ## Stap 7 — Afronden
