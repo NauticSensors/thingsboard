@@ -10,7 +10,7 @@ NauticSensors onderhoud een fork van [thingsboard/thingsboard](https://github.co
 ThingsBoard releases bevatten database-migraties die sequentieel uitgevoerd moeten worden. Je kunt **geen versies overslaan**. Als er tussenliggende releases zijn (bijv. 4.2.x → 4.3.0 → 4.3.1), moet elke versie doorlopen worden voor de DB-migraties. De tussenliggende stappen kunnen met officiële ThingsBoard Docker images (geen custom fork nodig). Alleen de laatste stap gebruikt onze custom fork.
 
 **Uitzondering — patch releases binnen dezelfde minor:**
-Patch releases (bijv. 4.3.0.1 → 4.3.1 → 4.3.1.1) delen hetzelfde DB-schema. Hiervoor is **geen `UPGRADE_TB=true` nodig**. Je kunt direct de nieuwe image deployen zonder migratie-stap. De upgrade validator accepteert alleen cross-minor upgrades (bijv. 4.2.x → 4.3.x).
+Voor patch releases (bijv. 4.3.1.2 → 4.3.1.8) is **geen `UPGRADE_TB=true` nodig, en het mag ook niet**: de upgrade validator accepteert alleen cross-minor upgrades (bijv. 4.2.x → 4.3.x) en weigert een database die al op dezelfde minor staat. Patch releases kunnen wel kleine schemawijzigingen bevatten. Die past tb-core zelf toe bij de start, zodat je in één stap naar de laatste patch kunt. Zie [Patch-upgrade binnen dezelfde minor](#patch-upgrade-binnen-dezelfde-minor).
 
 ## Huidige setup
 
@@ -21,6 +21,8 @@ Patch releases (bijv. 4.3.0.1 → 4.3.1 → 4.3.1.1) delen hetzelfde DB-schema. 
 | Upstream | `https://github.com/thingsboard/thingsboard.git` |
 | Docker registry | `registry.local.nauticsensors.com/bluestar/` |
 | Helm chart | `homelab-infra/apps/helm/thingsboard/thingsboard-cluster/` |
+| Cluster-runbook | `homelab-infra/apps/helm/thingsboard/UPGRADE-RUNBOOK.md` (back-up, uitvoering, verificatie, rollback) |
+| Laatste upgrade | 4.3.1.8 op 10 november 2026, tag `bluestar-v4.3.1.8` |
 
 ## Custom patches
 
@@ -33,6 +35,41 @@ Deze patches moeten behouden blijven bij elke upgrade:
 2. **BlueStar branding** — Logo en e-mail templates
 
 > **Tip:** Na elke upgrade, controleer of upstream patches heeft overgenomen die onze customizations overbodig maken (zoals gebeurd is met `${alarmOriginatorLabel}` en `${details.*}` in 4.3).
+
+## Patch-upgrade binnen dezelfde minor
+
+Dit is het korte pad. Het is voor het laatst gebruikt bij 4.3.1.2 → 4.3.1.8 op 10 november 2026. Stap 4 (tussenliggende migraties) vervalt hierbij volledig.
+
+### Hoe het werkt
+
+Bij elke start van **tb-core** draait de klasse `SystemPatchApplier`. Die neemt een advisory lock in PostgreSQL en vergelijkt `tb_schema_settings.schema_version` met de versie van het image. Is het image nieuwer binnen dezelfde minor, dan gebeurt het volgende:
+
+1. De LTS-migraties uit `application/src/main/data/upgrade/lts/<versie>/schema_update.sql` worden in volgorde toegepast, met per versie een eventuele Java-stap.
+2. De SQL-views worden ververst.
+3. De systeemwidgets, -bundels en -afbeeldingen worden bijgewerkt.
+
+Daarna start de core gewoon door. Er is geen aparte upgrade-run en de pod stopt niet tussendoor.
+
+Bij 4.3.1.2 → 4.3.1.8 waren dat de migraties 4.3.1.3 (tabel `iot_hub_installed_item`, en vier verouderde systeem-widgetbundels verwijderd) en 4.3.1.6 (tabel `tb_cluster`). Samen duurde dat ongeveer 8 seconden. De schemawijzigingen waren additief. De rollback naar het vorige image is vooraf getest op een demodatabase.
+
+### Stappen
+
+1. Rebase `bluestar-4.3` op de upstream-tag van de doelversie en bouw de twee images voor `linux/amd64` (stap 2).
+2. Push de images en controleer dat ze in de registry staan. De workloads hebben `imagePullPolicy: Always`: zonder image blijft de nieuwe core-pod in `ImagePullBackOff` hangen en ligt ThingsBoard stil.
+3. Maak een database-backup (stap 3).
+4. Werk in `homelab-infra` de tags in `values.yaml` en `appVersion` in `Chart.yaml` bij (stap 5). Laat `UPGRADE_TB` op `"false"` staan.
+5. Controleer met `helm diff` dat alleen de image-regels wijzigen en deploy met `-f values.yaml`.
+6. Volg het log van de core. Verwachte regels, in deze volgorde:
+   ```
+   Version increased from 4.3.1.2 to 4.3.1.8
+   Applied LTS migration 4.3.1.3
+   Applied LTS migration 4.3.1.6
+   Updated sql database views
+   System data patch update completed successfully
+   ```
+7. Verifieer (stap 6) en rond af (stap 7).
+
+Het cluster-runbook in `homelab-infra` beschrijft daarnaast hoe je tijdens de herstart geen metingen verliest, hoe je de configuratie vooraf en achteraf vergelijkt en hoe de rollback werkt.
 
 ## Stap 1 — Upgrade-pad bepalen
 
@@ -131,6 +168,45 @@ Dit bouwt Docker images lokaal als `thingsboard/tb-node:<versie>` en `thingsboar
 
 > **Let op:** Een volledige build (`mvn ... clean install` zonder `-pl`) kan falen op `js-executor` en `monitoring` modules door Gradle-incompatibiliteit. Die modules gebruiken we niet (we draaien de officiële Docker Hub images ervoor).
 
+### Images voor amd64 bouwen op een Apple Silicon-Mac
+
+Het recept hierboven (`-Ddockerfile.skip=false`) bouwt images voor de architectuur van de bouwmachine. Op een Apple Silicon-Mac is dat `arm64`, terwijl de k3s-nodes `amd64` zijn. Bouw daar eerst de Docker-contexten met Maven en daarna de images met `docker buildx`. Zo is 4.3.1.8 gebouwd.
+
+Nodig: JDK 17 (bijv. `brew install openjdk@17`), Maven 3.9 en Docker met buildx.
+
+```bash
+export JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home
+cd thingsboard
+
+# 1. Docker-contexten bouwen: msa/web-ui/target en msa/tb-node/target
+mvn -B -ntp -T4 clean install -DskipTests -Dlicense.skip=true -pl msa/web-ui,msa/tb-node -am
+mvn -B -ntp install -DskipTests -Dlicense.skip=true -pl msa/tb-node
+```
+
+- Zonder Rosetta eindigt het eerste commando na ongeveer 8 minuten met `BUILD FAILURE` in `msa/web-ui`, bij `yarn pkg`. Dat is onschadelijk: het image gebruikt die binary niet en de context `msa/web-ui/target` is dan compleet. Maven slaat door de fout wel `msa/tb-node` over. Het tweede commando maakt die context alsnog.
+- `-Dlicense.skip=true` vervangt `license:format`, zodat de werkboom ongewijzigd blijft.
+
+```bash
+VERSION=4.3.1.8  # pas aan naar de doelversie
+REG=registry.local.nauticsensors.com/bluestar
+REV=$(git rev-parse HEAD)
+
+# 2. Images bouwen voor amd64, direct met de registry-tag
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false --load \
+  --label "org.opencontainers.image.revision=$REV" --label "org.opencontainers.image.version=$VERSION" \
+  --label "org.opencontainers.image.source=https://github.com/NauticSensors/thingsboard" \
+  -t $REG/tb-node:$VERSION msa/tb-node/target
+docker buildx build --platform linux/amd64 --provenance=false --sbom=false --load \
+  --label "org.opencontainers.image.revision=$REV" --label "org.opencontainers.image.version=$VERSION" \
+  --label "org.opencontainers.image.source=https://github.com/NauticSensors/thingsboard" \
+  -t $REG/tb-web-ui:$VERSION msa/web-ui/target
+
+# 3. Architectuur controleren: verwacht twee keer amd64
+docker image inspect --format '{{.Architecture}}' $REG/tb-node:$VERSION $REG/tb-web-ui:$VERSION
+```
+
+De images hebben hiermee de registry-tag al. De `docker tag`-regels hieronder vervallen dan; alleen de push blijft over.
+
 ### Docker images taggen en pushen
 
 ```bash
@@ -143,17 +219,27 @@ docker push registry.local.nauticsensors.com/bluestar/tb-node:$VERSION
 docker push registry.local.nauticsensors.com/bluestar/tb-web-ui:$VERSION
 ```
 
+- Controleer vóór de push dat de tag nog niet bestaat: `docker manifest inspect <image>:$VERSION` hoort `no such manifest` te geven. Overschrijf een bestaande tag niet.
+- Breekt de push van een grote laag af met `504 Gateway Timeout`, herhaal dan de push. De andere lagen staan er dan al.
+- Controleer na de push dat de digest in de registry gelijk is aan het lokale image-ID.
+
 ## Stap 3 — Database backup
 
 **Altijd** een database backup maken vóór de eerste DB-migratie.
 
-PostgreSQL draait extern (niet in k8s) op `192.168.1.241`:
+PostgreSQL draait extern (niet in k8s) op `192.168.1.241`. Het cluster-runbook maakt daarnaast een pgbackrest-backup voor point-in-time-herstel.
+
+Zet geen wachtwoorden in dit document: deze repository is publiek.
 
 ```bash
-ssh simon@192.168.1.241 "PGPASSWORD=thingsboard pg_dump -h localhost -U thingsboard -d thingsboard_370 -F c -f /tmp/thingsboard_backup_pre_upgrade_\$(date +%Y%m%d_%H%M%S).dump"
+# Logische dump als gebruiker postgres op de database-VM; daar is geen wachtwoord voor nodig
+ssh simon@192.168.1.241 'sudo -u postgres pg_dump -Fc -Z6 -d thingsboard_370' > thingsboard_370-pre-upgrade-$(date +%Y%m%d_%H%M%S).pgdump
+chmod 600 thingsboard_370-pre-upgrade-*.pgdump
 ```
 
 ## Stap 4 — Tussenliggende DB-migraties uitvoeren
+
+> **Let op (november 2026):** deze stap geldt alleen voor cross-minor upgrades tot en met 4.3. Bij een patch-upgrade sla je hem over (zie [Patch-upgrade binnen dezelfde minor](#patch-upgrade-binnen-dezelfde-minor)). Voor 4.3 → 4.4 werkt het anders: een aparte upgrade-pod, een licentiesleutel en een datamigratie naar het PE-model. Zie sectie 7 van het cluster-runbook. Deploy bij voorkeur met `-f values.yaml` in plaats van `--reuse-values` (zie [Bekende valkuilen na upgrade](#bekende-valkuilen-na-upgrade)).
 
 Voor elke tussenliggende versie in het upgrade-pad (zie stap 1) voer je een DB-migratie uit met het **officiële ThingsBoard Docker image**. Dit hoeft niet met onze custom fork — het gaat alleen om het uitvoeren van de database schema-migraties.
 
@@ -253,29 +339,31 @@ Nu alle tussenliggende migraties zijn uitgevoerd, deploy de custom fork als laat
 **`Chart.yaml`**:
 
 ```yaml
-appVersion: "4.3.1"  # major.minor.patch (zonder build nummer)
+appVersion: 4.3.1.8  # volledige versie, gelijk aan de image-tags
 ```
 
-**`values.yaml`** — image naar onze custom fork. Werk **alle vier** tag-locaties bij in dezelfde commit (de `global.tag` lekt door naar upstream `tb-http-transport` en `tb-js-executor`, zie [Bekende valkuilen na upgrade](#bekende-valkuilen-na-upgrade)):
+De upstream-images `tb-http-transport` en `tb-js-executor` vallen zonder eigen `image.tag` terug op `appVersion`. Zet `appVersion` daarom op de volledige versie en geef beide ook een expliciete tag. Controleer vooraf dat upstream de tag heeft gepubliceerd, bijvoorbeeld met `docker manifest inspect thingsboard/tb-http-transport:4.3.1.8`.
+
+**`values.yaml`** — image naar onze custom fork. Werk **alle zes** tag-locaties bij in dezelfde commit (zie [Bekende valkuilen na upgrade](#bekende-valkuilen-na-upgrade)):
 
 ```yaml
 global:
-  tag: "4.3.1.1"
+  tag: "4.3.1.8"
 
 node:
   image:
     repository: registry.local.nauticsensors.com/bluestar/tb-node
-    tag: "4.3.1.1"
+    tag: "4.3.1.8"
 
 engine:
   image:
     repository: registry.local.nauticsensors.com/bluestar/tb-node
-    tag: "4.3.1.1"
+    tag: "4.3.1.8"
 
 web:
   image:
     repository: registry.local.nauticsensors.com/bluestar/tb-web-ui
-    tag: "4.3.1.1"
+    tag: "4.3.1.8"
   # tb-web-ui is een Node.js proces met liveness probe op /index.html (timeout 10s, hardcoded
   # in de chart). Met de chart-default 100m/100Mi blokkeert de event loop bij piek-load → probe
   # timeout → restart-loop → cloudflared krijgt "context canceled" → bezoekers zien een
@@ -287,9 +375,18 @@ web:
     requests:
       cpu: "200m"
       memory: 128Mi
+
+js:
+  image:
+    tag: "4.3.1.8"   # upstream thingsboard/tb-js-executor
+
+transports:
+  http:
+    image:
+      tag: "4.3.1.8"   # upstream thingsboard/tb-http-transport
 ```
 
-**`templates/node/msa/core-statefulset.yml`** — upgrade flags:
+**`templates/node/msa/core-statefulset.yml`** — upgrade flags, **alleen bij een cross-minor upgrade**. Bij een patch-upgrade blijft `UPGRADE_TB` op `"false"` staan en sla je dit over:
 
 ```yaml
 - name: UPGRADE_TB
@@ -338,13 +435,21 @@ Bij cross-minor upgrades, zelfde procedure als stap 4c/4d:
 ## Stap 7 — Afronden
 
 ```bash
-# Push de gerebaste fork-branch naar origin
 cd thingsboard
-git push origin bluestar-4.3 --force-with-lease
+
+# Leg de gedeployde commit vast met een tag (conventie: bluestar-v<versie>)
+git tag -a bluestar-v4.3.1.8 -m "NauticSensors fork: upstream 4.3.1.8 + BlueStar customizations"
+
+# Push de gerebaste fork-branch naar origin. Vul bij de lease de commit in
+# waar origin/bluestar-4.3 op stond toen je de rebase begon.
+git push origin bluestar-4.3 --force-with-lease=bluestar-4.3:<oude commit>
+git push origin bluestar-v4.3.1.8
 
 # Bij een minor/major upgrade: push de nieuwe branch
 git push origin bluestar-4.4 -u
 ```
+
+De push herschrijft `bluestar-4.3`, omdat de branch gerebased is. De lease met de oude commit voorkomt dat tussentijds werk van een ander ongemerkt wordt overschreven. De vorige stand blijft bereikbaar via de vorige tag, bijvoorbeeld `bluestar-v4.3.1.2`.
 
 Commit de Helm chart wijzigingen in `homelab-infra`.
 
@@ -360,7 +465,7 @@ Commit de Helm chart wijzigingen in `homelab-infra`.
 ### Custom fork bouwen
 - [ ] Rebase op nieuwe versie (conflicts opgelost)
 - [ ] Custom patches nog intact (check `resolveAttributePatterns()` in AlarmState.java)
-- [ ] Gebouwd met Maven (`-DskipTests -Ddockerfile.skip=false`)
+- [ ] Gebouwd met Maven; de images zijn `linux/amd64` (op een Apple Silicon-Mac via het buildx-recept)
 - [ ] Docker images getagd en gepusht naar `registry.local.nauticsensors.com`
 
 ### Database
@@ -374,14 +479,14 @@ Commit de Helm chart wijzigingen in `homelab-infra`.
 
 ### Finale deployment
 - [ ] Custom fork image ingesteld
-- [ ] `UPGRADE_TB=true` + `FROM_VERSION` van laatste tussenversie
-- [ ] Migratie succesvol afgerond
+- [ ] Alleen cross-minor: `UPGRADE_TB=true` + `FROM_VERSION` van laatste tussenversie (bij een patch-upgrade blijft `UPGRADE_TB` op `false`)
+- [ ] Migratie succesvol afgerond (patch-upgrade: `System data patch update completed successfully` in het core-log)
 - [ ] `UPGRADE_TB=false` teruggezet
-- [ ] `Chart.yaml` appVersion bijgewerkt
+- [ ] `Chart.yaml` appVersion en alle zes tags in `values.yaml` bijgewerkt
 - [ ] **`values.yaml` in sync met live cluster** — zie [Bekende valkuilen na upgrade](#bekende-valkuilen-na-upgrade)
 - [ ] UI bereikbaar + juiste versie
 - [ ] Alarm flow getest
-- [ ] Fork-branch gepusht naar origin
+- [ ] Fork-branch en tag `bluestar-v<versie>` gepusht naar origin
 - [ ] Helm chart wijzigingen gecommit in homelab-infra
 
 ## Bekende valkuilen na upgrade
@@ -407,19 +512,19 @@ Als die diff niet leeg is op `image:` regels: `values.yaml` is out-of-sync. Werk
 
 **Voorkeursmethode**: deploy altijd via `-f values.yaml` (zonder `--set`). `--set` alleen voor echte tijdelijke overrides, en dan altijd de waarde direct erna ook in `values.yaml` zetten.
 
-### 2. `global.tag` heeft brede impact
+### 2. Tag-bronnen: `global.tag` en `appVersion`
 
-Het `global.tag` veld in `values.yaml` is **niet alleen** voor de fork-images. Via fallback-logica in `thingsboard-cluster/templates/_helpers.tpl` lekt het naar:
+Elke workload bepaalt zijn image-tag via fallback-logica in `thingsboard-cluster/templates/_helpers.tpl`. De bronnen verschillen per component:
 
-| Component | Image | Tag-bron |
+| Component | Image | Tag-bron, in volgorde |
 |---|---|---|
-| `tb-core` (StatefulSet) | `registry.local.nauticsensors.com/bluestar/tb-node` | `node.image.tag` |
-| `tb-rule-engine` (StatefulSet) | `registry.local.nauticsensors.com/bluestar/tb-node` | `engine.image.tag` |
-| `tb-web-ui` (Deployment) | `registry.local.nauticsensors.com/bluestar/tb-web-ui` | `web.image.tag` |
-| `tb-http-transport` (StatefulSet) | `thingsboard/tb-http-transport` (upstream) | `global.tag`, gestripped tot 3-octet → `4.3.1.1` wordt `4.3.1` |
-| `tb-js-executor` (Deployment ×5) | `thingsboard/tb-js-executor` (upstream) | idem |
+| `tb-core` (StatefulSet) | `registry.local.nauticsensors.com/bluestar/tb-node` | `node.image.tag`, anders `global.tag`, anders `appVersion` |
+| `tb-rule-engine` (StatefulSet) | `registry.local.nauticsensors.com/bluestar/tb-node` | `engine.image.tag`, anders `global.tag`, anders `appVersion` |
+| `tb-web-ui` (Deployment) | `registry.local.nauticsensors.com/bluestar/tb-web-ui` | `web.image.tag`, anders `global.tag`, anders `appVersion` |
+| `tb-http-transport` (StatefulSet) | `thingsboard/tb-http-transport` (upstream) | `transports.http.image.tag`, anders `appVersion` |
+| `tb-js-executor` (Deployment ×5) | `thingsboard/tb-js-executor` (upstream) | `js.image.tag`, anders `appVersion` |
 
-Wanneer je `global.tag` bumpt verschuiven dus ook `tb-http-transport` en `tb-js-executor` mee naar de bijbehorende upstream patch versie. Dit is meestal gewenst (consistent), maar wees je ervan bewust dat `--set global.tag=...` 5 services raakt, niet 3.
+`global.tag` raakt de twee upstream-images dus niet. Zonder eigen tag volgen die `appVersion` uit `Chart.yaml`. Tot 4.3.1.8 stond `appVersion` op `4.3.1`. Daardoor bleven `tb-http-transport` en `tb-js-executor` op de ongepatchte `4.3.1` staan, terwijl de fork-images al op `4.3.1.2` zaten. Sinds 4.3.1.8 hebben beide een expliciete tag in `values.yaml` en staat `appVersion` op de volledige versie. Werk bij een upgrade alle zes de tags en `appVersion` bij.
 
 ### 3. `tb-web-ui` resource limits standaard te laag
 
